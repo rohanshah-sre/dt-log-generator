@@ -1,0 +1,18 @@
+{
+  "$schema": "./.dt-app/app.config.schema.json",
+  "environmentUrl": "https://xmj5054h.sprint.apps.dynatracelabs.com/",
+  "app": {
+    "name": "LaunchLog",
+    "version": "0.1.0",
+    "description": "LaunchLog — Business scenario log generator for Dynatrace demos.",
+    "id": "my.launchlog",
+    "scopes": [
+      { "name": "automation:workflows:read", "comment": "read created workflows" },
+      { "name": "automation:workflows:write", "comment": "create the log-gen workflow" },
+      { "name": "automation:workflows:run", "comment": "run the workflow on demand" },
+      { "name": "storage:logs:write", "comment": "ingest generated logs into Grail" },
+      { "name": "storage:logs:read", "comment": "read back ingested logs in DQL queries" },
+      { "name": "environment-api:entities:read", "comment": "resolve host/service entities for log enrichment" }
+    ]
+  }
+}
