@@ -1,6 +1,6 @@
 {
   "$schema": "./.dt-app/app.config.schema.json",
-  "environmentUrl": "https://yuf3378h.sprint.apps.dynatracelabs.com/",
+  "environmentUrl": "https://xmj5054h.sprint.apps.dynatracelabs.com/",
   "app": {
     "name": "LaunchLog",
     "version": "0.1.0",
