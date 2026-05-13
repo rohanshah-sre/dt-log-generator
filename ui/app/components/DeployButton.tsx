@@ -5,8 +5,9 @@ import { Text } from "@dynatrace/strato-components/typography";
 import { useWizard, VOLUME_TO_LPM, ERROR_RATE_TO_PCT } from "../lib/wizardContext";
 import { findVertical, findUseCase } from "../lib/verticals";
 import { buildWorkflowDescriptor } from "../lib/workflowBuilder";
+import { buildDashboard } from "../lib/dashboardBuilder";
 import { buildHostPool, pickServices } from "../lib/logGenerator";
-import { workflowsClient } from "../lib/dtClients";
+import { workflowsClient, documentsClient } from "../lib/dtClients";
 
 const Spinner = () => (
   <span
@@ -50,7 +51,24 @@ export const DeployButton: React.FC = () => {
         serviceCount: w.serviceCount,
       };
 
-      const wfDescriptor = buildWorkflowDescriptor(cfg);
+      const documentName = `[LaunchLog] ${cfg.scenarioName}`;
+      const dashDoc = buildDashboard({
+        scenarioName: cfg.scenarioName,
+        vertical: cfg.vertical,
+        useCase: cfg.useCase,
+        customerName: cfg.customerName,
+        documentName,
+      });
+      const docResp = await documentsClient.createDocument({
+        body: {
+          name: dashDoc.name,
+          type: dashDoc.type,
+          content: new Blob([dashDoc.content], { type: "application/json" }),
+        },
+      });
+      const docId = docResp.id;
+
+      const wfDescriptor = buildWorkflowDescriptor(cfg, docId);
       const wfResp = await workflowsClient.createWorkflow({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         body: wfDescriptor as any,
@@ -62,6 +80,8 @@ export const DeployButton: React.FC = () => {
       w.setDeployResult({
         workflowId: wfId,
         workflowTitle: wfDescriptor.title,
+        dashboardId: docId,
+        dashboardName: documentName,
       });
       w.setDeployState("success");
     } catch (err) {

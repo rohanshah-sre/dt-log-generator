@@ -7,32 +7,47 @@ export interface DashboardParams {
 }
 
 const Q_SETTINGS = {
-  enabledConnections: [] as unknown[],
   maxResultRecords: 1000,
   defaultScanLimitGbytes: 500,
   maxResultMegaBytes: 1,
-  allowRealTimeTarget: true,
+  defaultSamplingRatio: 10,
+  enableSampling: false,
 };
 
-// Viz types use SCREAMING_SNAKE_CASE as required by the Dynatrace Dashboards JSON schema
-type Viz = "SINGLE_VALUE" | "GRAPH_CHART" | "CATEGORICAL_BAR_CHART" | "PIE_CHART" | "MAP" | "TABLE";
+// Viz types use camelCase tokens as required by the Dynatrace Dashboards JSON schema
+type Viz =
+  | "singleValue"
+  | "lineChart"
+  | "areaChart"
+  | "categoricalBarChart"
+  | "pieChart"
+  | "donutChart"
+  | "honeycomb"
+  | "table";
 
 const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
-function dt(title: string, query: string, viz: Viz = "SINGLE_VALUE") {
+function vizSettings(viz: Viz): Record<string, unknown> {
+  if (viz === "singleValue") {
+    return {
+      singleValue: { labelMode: "none", trend: { isVisible: true } },
+      thresholds: [],
+    };
+  }
+  if (viz === "table") {
+    return { table: { rowDensity: "comfortable" }, thresholds: [] };
+  }
+  return { chartSettings: { truncationMode: "middle" }, thresholds: [] };
+}
+
+function dt(title: string, query: string, viz: Viz = "singleValue") {
   return {
     type: "data",
     title,
-    queries: [
-      {
-        id: "A",
-        type: "DQL",
-        query,
-        enabled: true,
-        querySettings: Q_SETTINGS,
-      },
-    ],
-    visualConfig: { type: viz },
+    query,
+    querySettings: Q_SETTINGS,
+    visualization: viz,
+    visualizationSettings: vizSettings(viz),
   };
 }
 
@@ -395,264 +410,264 @@ function getCharts(q: string, ucKey: string): TileDef[] {
   switch (ucKey) {
     case "financial/payments":
       return [
-        { title: "Transaction Volume by Type", dql: `${base} | filter event.type == "TRANSACTION_COMPLETED" | makeTimeseries count = count(), by:{transaction.type}`, viz: "GRAPH_CHART" },
-        { title: "Transactions by Payment Method", dql: `${base} | summarize count = count(), by:{payment.method} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Decline Reasons", dql: `${base} | filter event.type == "TRANSACTION_DECLINED" | summarize count = count(), by:{decline.reason} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Revenue by Customer Tier", dql: `${base} | filter event.type == "TRANSACTION_COMPLETED" | summarize revenue = sum(transaction.amount), by:{customer.tier}`, viz: "PIE_CHART" },
+        { title: "Transaction Volume by Type", dql: `${base} | filter event.type == "TRANSACTION_COMPLETED" | makeTimeseries count = count(), by:{transaction.type}`, viz: "lineChart" },
+        { title: "Transactions by Payment Method", dql: `${base} | summarize count = count(), by:{payment.method} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Decline Reasons", dql: `${base} | filter event.type == "TRANSACTION_DECLINED" | summarize count = count(), by:{decline.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Revenue by Customer Tier", dql: `${base} | filter event.type == "TRANSACTION_COMPLETED" | summarize revenue = sum(transaction.amount), by:{customer.tier}`, viz: "pieChart" },
       ];
     case "financial/fraud":
       return [
-        { title: "Fraud Events Over Time by Type", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "Rule Trigger Frequency", dql: `${base} | summarize count = count(), by:{rule.triggered} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Top Fraud Reasons", dql: `${base} | filter isNotNull(fraud.reason) | summarize count = count(), by:{fraud.reason} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Action Distribution", dql: `${base} | filter isNotNull(action.taken) | summarize count = count(), by:{action.taken}`, viz: "PIE_CHART" },
+        { title: "Fraud Events Over Time by Type", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Rule Trigger Frequency", dql: `${base} | summarize count = count(), by:{rule.triggered} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Top Fraud Reasons", dql: `${base} | filter isNotNull(fraud.reason) | summarize count = count(), by:{fraud.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Action Distribution", dql: `${base} | filter isNotNull(action.taken) | summarize count = count(), by:{action.taken}`, viz: "pieChart" },
       ];
     case "financial/trading":
       return [
-        { title: "Order Volume Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "Top Traded Symbols", dql: `${base} | filter event.type == "ORDER_EXECUTED" | summarize count = count(), by:{instrument.symbol} | sort count desc | limit 10`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Reject Reasons", dql: `${base} | filter event.type == "ORDER_REJECTED" | summarize count = count(), by:{reject.reason} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Executions by Venue", dql: `${base} | filter event.type == "ORDER_EXECUTED" | summarize count = count(), by:{venue}`, viz: "PIE_CHART" },
+        { title: "Order Volume Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Top Traded Symbols", dql: `${base} | filter event.type == "ORDER_EXECUTED" | summarize count = count(), by:{instrument.symbol} | sort count desc | limit 10`, viz: "categoricalBarChart" },
+        { title: "Reject Reasons", dql: `${base} | filter event.type == "ORDER_REJECTED" | summarize count = count(), by:{reject.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Executions by Venue", dql: `${base} | filter event.type == "ORDER_EXECUTED" | summarize count = count(), by:{venue}`, viz: "pieChart" },
       ];
     case "healthcare/patient_portal":
       return [
-        { title: "Patient Actions Over Time", dql: `${base} | filter event.type == "PATIENT_ACTION" | makeTimeseries count = count(), by:{action}`, viz: "GRAPH_CHART" },
-        { title: "Actions by Department", dql: `${base} | filter isNotNull(department) | summarize count = count(), by:{department} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "EHR Errors by Code", dql: `${base} | filter event.type == "EHR_INTEGRATION_FAILURE" | summarize count = count(), by:{error.code} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Auth Method Distribution", dql: `${base} | filter isNotNull(mfa.method) | summarize count = count(), by:{mfa.method}`, viz: "PIE_CHART" },
+        { title: "Patient Actions Over Time", dql: `${base} | filter event.type == "PATIENT_ACTION" | makeTimeseries count = count(), by:{action}`, viz: "lineChart" },
+        { title: "Actions by Department", dql: `${base} | filter isNotNull(department) | summarize count = count(), by:{department} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "EHR Errors by Code", dql: `${base} | filter event.type == "EHR_INTEGRATION_FAILURE" | summarize count = count(), by:{error.code} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Auth Method Distribution", dql: `${base} | filter isNotNull(mfa.method) | summarize count = count(), by:{mfa.method}`, viz: "pieChart" },
       ];
     case "healthcare/claims":
       return [
-        { title: "Claims Volume by Type", dql: `${base} | makeTimeseries count = count(), by:{claim.type}`, viz: "GRAPH_CHART" },
-        { title: "Denial Reasons", dql: `${base} | filter isNotNull(denial.reason) | summarize count = count(), by:{denial.reason} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Claim Status Distribution", dql: `${base} | summarize count = count(), by:{claim.status} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Auto vs Manual Adjudication", dql: `${base} | summarize count = count(), by:{auto.adjudicated}`, viz: "PIE_CHART" },
+        { title: "Claims Volume by Type", dql: `${base} | makeTimeseries count = count(), by:{claim.type}`, viz: "lineChart" },
+        { title: "Denial Reasons", dql: `${base} | filter isNotNull(denial.reason) | summarize count = count(), by:{denial.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Claim Status Distribution", dql: `${base} | summarize count = count(), by:{claim.status} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Auto vs Manual Adjudication", dql: `${base} | summarize count = count(), by:{auto.adjudicated}`, viz: "pieChart" },
       ];
     case "healthcare/ehr":
       return [
-        { title: "HL7 Throughput Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "Messages by Type", dql: `${base} | filter isNotNull(hl7.message_type) | summarize count = count(), by:{hl7.message_type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Failures by Facility", dql: `${base} | filter event.type == "HL7_FAILURE" | summarize count = count(), by:{facility} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "PIE_CHART" },
+        { title: "HL7 Throughput Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Messages by Type", dql: `${base} | filter isNotNull(hl7.message_type) | summarize count = count(), by:{hl7.message_type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Failures by Facility", dql: `${base} | filter event.type == "HL7_FAILURE" | summarize count = count(), by:{facility} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
       ];
     case "retail/orders":
       return [
-        { title: "Order Volume by Customer Segment", dql: `${base} | makeTimeseries count = count(), by:{customer.segment}`, viz: "GRAPH_CHART" },
-        { title: "Orders by Product Category", dql: `${base} | summarize count = count(), by:{product.category} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Warehouse Performance", dql: `${base} | summarize count = count(), by:{warehouse.id} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Carrier Distribution", dql: `${base} | filter isNotNull(carrier) | summarize count = count(), by:{carrier}`, viz: "PIE_CHART" },
+        { title: "Order Volume by Customer Segment", dql: `${base} | makeTimeseries count = count(), by:{customer.segment}`, viz: "lineChart" },
+        { title: "Orders by Product Category", dql: `${base} | summarize count = count(), by:{product.category} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Warehouse Performance", dql: `${base} | summarize count = count(), by:{warehouse.id} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Carrier Distribution", dql: `${base} | filter isNotNull(carrier) | summarize count = count(), by:{carrier}`, viz: "pieChart" },
       ];
     case "retail/inventory":
       return [
-        { title: "Stock Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "Events by Warehouse", dql: `${base} | summarize count = count(), by:{warehouse.id} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Stock-Outs Over Time", dql: `${base} | filter event.type == "STOCKOUT" | makeTimeseries count = count()`, viz: "GRAPH_CHART" },
-        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "PIE_CHART" },
+        { title: "Stock Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Events by Warehouse", dql: `${base} | summarize count = count(), by:{warehouse.id} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Stock-Outs Over Time", dql: `${base} | filter event.type == "STOCKOUT" | makeTimeseries count = count()`, viz: "lineChart" },
+        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
       ];
     case "retail/cx":
       return [
-        { title: "Browse Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "Page Type Distribution", dql: `${base} | filter isNotNull(page.type) | summarize count = count(), by:{page.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Checkout Failure Reasons", dql: `${base} | filter event.type == "CHECKOUT_FAILURE" | summarize count = count(), by:{error.code} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Event Type Split", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "PIE_CHART" },
+        { title: "Browse Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Page Type Distribution", dql: `${base} | filter isNotNull(page.type) | summarize count = count(), by:{page.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Checkout Failure Reasons", dql: `${base} | filter event.type == "CHECKOUT_FAILURE" | summarize count = count(), by:{error.code} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Event Type Split", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
       ];
     case "telco/network":
       return [
-        { title: "Network Events by Metric Type", dql: `${base} | makeTimeseries count = count(), by:{metric.type}`, viz: "GRAPH_CHART" },
-        { title: "Breaches by Region", dql: `${base} | filter threshold.breach == true | summarize count = count(), by:{region} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Ticket Priority Distribution", dql: `${base} | filter isNotNull(ticket.priority) | summarize count = count(), by:{ticket.priority} | sort ticket.priority asc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Technology Distribution", dql: `${base} | summarize count = count(), by:{technology}`, viz: "PIE_CHART" },
+        { title: "Network Events by Metric Type", dql: `${base} | makeTimeseries count = count(), by:{metric.type}`, viz: "lineChart" },
+        { title: "Breaches by Region", dql: `${base} | filter threshold.breach == true | summarize count = count(), by:{region} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Ticket Priority Distribution", dql: `${base} | filter isNotNull(ticket.priority) | summarize count = count(), by:{ticket.priority} | sort ticket.priority asc`, viz: "categoricalBarChart" },
+        { title: "Technology Distribution", dql: `${base} | summarize count = count(), by:{technology}`, viz: "pieChart" },
       ];
     case "telco/billing":
       return [
-        { title: "Usage Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "Usage by Type", dql: `${base} | filter event.type == "USAGE_EVENT" | summarize count = count(), by:{usage.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Rating Failures Over Time", dql: `${base} | filter event.type == "RATING_FAILURE" | makeTimeseries count = count()`, viz: "GRAPH_CHART" },
-        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "PIE_CHART" },
+        { title: "Usage Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Usage by Type", dql: `${base} | filter event.type == "USAGE_EVENT" | summarize count = count(), by:{usage.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Rating Failures Over Time", dql: `${base} | filter event.type == "RATING_FAILURE" | makeTimeseries count = count()`, viz: "lineChart" },
+        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
       ];
     case "manufacturing/production":
       return [
-        { title: "OEE Score Over Time by Line", dql: `${base} | filter isNotNull(oee.score) | makeTimeseries avg_oee = avg(oee.score), by:{line.id}`, viz: "GRAPH_CHART" },
-        { title: "Defect Rate Trend", dql: `${base} | filter isNotNull(defect.rate) | makeTimeseries avg_defects = avg(defect.rate)`, viz: "GRAPH_CHART" },
-        { title: "Downtime Root Causes", dql: `${base} | filter isNotNull(downtime.reason) | summarize count = count(), by:{downtime.reason} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Events by Machine Type", dql: `${base} | summarize count = count(), by:{machine.type}`, viz: "PIE_CHART" },
+        { title: "OEE Score Over Time by Line", dql: `${base} | filter isNotNull(oee.score) | makeTimeseries avg_oee = avg(oee.score), by:{line.id}`, viz: "lineChart" },
+        { title: "Defect Rate Trend", dql: `${base} | filter isNotNull(defect.rate) | makeTimeseries avg_defects = avg(defect.rate)`, viz: "lineChart" },
+        { title: "Downtime Root Causes", dql: `${base} | filter isNotNull(downtime.reason) | summarize count = count(), by:{downtime.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Events by Machine Type", dql: `${base} | summarize count = count(), by:{machine.type}`, viz: "pieChart" },
       ];
     case "manufacturing/quality":
       return [
-        { title: "Inspection Volume Over Time", dql: `${base} | makeTimeseries count = count(), by:{result}`, viz: "GRAPH_CHART" },
-        { title: "Defect Codes", dql: `${base} | filter isNotNull(defect.code) | summarize count = count(), by:{defect.code} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Result Distribution", dql: `${base} | summarize count = count(), by:{result}`, viz: "PIE_CHART" },
-        { title: "Defect Rate Trend", dql: `${base} | filter isNotNull(defect.rate) | makeTimeseries avg = avg(defect.rate)`, viz: "GRAPH_CHART" },
+        { title: "Inspection Volume Over Time", dql: `${base} | makeTimeseries count = count(), by:{result}`, viz: "lineChart" },
+        { title: "Defect Codes", dql: `${base} | filter isNotNull(defect.code) | summarize count = count(), by:{defect.code} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Result Distribution", dql: `${base} | summarize count = count(), by:{result}`, viz: "pieChart" },
+        { title: "Defect Rate Trend", dql: `${base} | filter isNotNull(defect.rate) | makeTimeseries avg = avg(defect.rate)`, viz: "lineChart" },
       ];
     case "manufacturing/supply_chain":
       return [
-        { title: "PO Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "PO Actions Distribution", dql: `${base} | filter event.type == "PO_EVENT" | summarize count = count(), by:{action} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "SLA Breaches Over Time", dql: `${base} | filter event.type == "SUPPLIER_SLA_BREACH" | makeTimeseries count = count()`, viz: "GRAPH_CHART" },
-        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "PIE_CHART" },
+        { title: "PO Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "PO Actions Distribution", dql: `${base} | filter event.type == "PO_EVENT" | summarize count = count(), by:{action} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "SLA Breaches Over Time", dql: `${base} | filter event.type == "SUPPLIER_SLA_BREACH" | makeTimeseries count = count()`, viz: "lineChart" },
+        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
       ];
     case "insurance/claims":
       return [
-        { title: "Claims Volume Over Time", dql: `${base} | makeTimeseries count = count(), by:{claim.status}`, viz: "GRAPH_CHART" },
-        { title: "Claims Value by Severity", dql: `${base} | summarize total = sum(claim.amount), by:{claim.severity} | sort total desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "SLA Status Distribution", dql: `${base} | summarize count = count(), by:{sla.status}`, viz: "PIE_CHART" },
-        { title: "Policy Type Distribution", dql: `${base} | summarize count = count(), by:{policy.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
+        { title: "Claims Volume Over Time", dql: `${base} | makeTimeseries count = count(), by:{claim.status}`, viz: "lineChart" },
+        { title: "Claims Value by Severity", dql: `${base} | summarize total = sum(claim.amount), by:{claim.severity} | sort total desc`, viz: "categoricalBarChart" },
+        { title: "SLA Status Distribution", dql: `${base} | summarize count = count(), by:{sla.status}`, viz: "pieChart" },
+        { title: "Policy Type Distribution", dql: `${base} | summarize count = count(), by:{policy.type} | sort count desc`, viz: "categoricalBarChart" },
       ];
     case "insurance/underwriting":
       return [
-        { title: "Decisions Over Time", dql: `${base} | makeTimeseries count = count(), by:{decision}`, viz: "GRAPH_CHART" },
-        { title: "Decision Mix", dql: `${base} | filter isNotNull(decision) | summarize count = count(), by:{decision}`, viz: "PIE_CHART" },
-        { title: "Premium by Policy Type", dql: `${base} | filter isNotNull(premium) | summarize avg_premium = avg(premium), by:{policy.type} | sort avg_premium desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Avg Latency Over Time (ms)", dql: `${base} | filter isNotNull(latency_ms) | makeTimeseries avg_latency = avg(latency_ms)`, viz: "GRAPH_CHART" },
+        { title: "Decisions Over Time", dql: `${base} | makeTimeseries count = count(), by:{decision}`, viz: "lineChart" },
+        { title: "Decision Mix", dql: `${base} | filter isNotNull(decision) | summarize count = count(), by:{decision}`, viz: "pieChart" },
+        { title: "Premium by Policy Type", dql: `${base} | filter isNotNull(premium) | summarize avg_premium = avg(premium), by:{policy.type} | sort avg_premium desc`, viz: "categoricalBarChart" },
+        { title: "Avg Latency Over Time (ms)", dql: `${base} | filter isNotNull(latency_ms) | makeTimeseries avg_latency = avg(latency_ms)`, viz: "lineChart" },
       ];
     case "gaming/sessions":
       return [
-        { title: "Player Activity Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Players by Region", dql: `${base} | summarize count = count(), by:{player.region} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Game Mode Distribution", dql: `${base} | filter isNotNull(game.mode) | summarize count = count(), by:{game.mode}`, viz: "PIE_CHART" },
-        { title: "Avg Latency by Region (ms)", dql: `${base} | filter isNotNull(latency_ms) | summarize avg = avg(latency_ms), by:{player.region} | sort avg desc`, viz: "CATEGORICAL_BAR_CHART" },
+        { title: "Player Activity Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Players by Region", dql: `${base} | summarize count = count(), by:{player.region} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Game Mode Distribution", dql: `${base} | filter isNotNull(game.mode) | summarize count = count(), by:{game.mode}`, viz: "pieChart" },
+        { title: "Avg Latency by Region (ms)", dql: `${base} | filter isNotNull(latency_ms) | summarize avg = avg(latency_ms), by:{player.region} | sort avg desc`, viz: "categoricalBarChart" },
       ];
     case "gaming/monetization":
       return [
-        { title: "IAP Revenue Over Time", dql: `${base} | filter event.type == "IAP" | makeTimeseries revenue = sum(amount)`, viz: "GRAPH_CHART" },
-        { title: "IAP Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "Failure Reasons", dql: `${base} | filter event.type == "IAP_FAILED" | summarize count = count(), by:{error.code} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Revenue by Currency", dql: `${base} | filter event.type == "IAP" | summarize revenue = sum(amount), by:{currency}`, viz: "PIE_CHART" },
+        { title: "IAP Revenue Over Time", dql: `${base} | filter event.type == "IAP" | makeTimeseries revenue = sum(amount)`, viz: "lineChart" },
+        { title: "IAP Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Failure Reasons", dql: `${base} | filter event.type == "IAP_FAILED" | summarize count = count(), by:{error.code} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Revenue by Currency", dql: `${base} | filter event.type == "IAP" | summarize revenue = sum(amount), by:{currency}`, viz: "pieChart" },
       ];
     case "gaming/live_ops":
       return [
-        { title: "Players Online Over Time", dql: `${base} | filter event.type == "LIVEOPS" | makeTimeseries avg_players = avg(players.online)`, viz: "GRAPH_CHART" },
-        { title: "CPU Over Time (%)", dql: `${base} | filter isNotNull(cpu.pct) | makeTimeseries avg_cpu = avg(cpu.pct)`, viz: "GRAPH_CHART" },
-        { title: "Incidents by Severity", dql: `${base} | filter event.type == "LIVEOPS_INCIDENT" | summarize count = count(), by:{incident.severity} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Events by Region", dql: `${base} | filter isNotNull(server.region) | summarize count = count(), by:{server.region}`, viz: "PIE_CHART" },
+        { title: "Players Online Over Time", dql: `${base} | filter event.type == "LIVEOPS" | makeTimeseries avg_players = avg(players.online)`, viz: "lineChart" },
+        { title: "CPU Over Time (%)", dql: `${base} | filter isNotNull(cpu.pct) | makeTimeseries avg_cpu = avg(cpu.pct)`, viz: "lineChart" },
+        { title: "Incidents by Severity", dql: `${base} | filter event.type == "LIVEOPS_INCIDENT" | summarize count = count(), by:{incident.severity} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Events by Region", dql: `${base} | filter isNotNull(server.region) | summarize count = count(), by:{server.region}`, viz: "pieChart" },
       ];
     case "logistics/last_mile":
       return [
-        { title: "Delivery Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Delivery Success by Zone", dql: `${base} | filter event.subtype == "DELIVERED" | summarize count = count(), by:{zone} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Failure Reasons", dql: `${base} | filter isNotNull(failure.reason) | summarize count = count(), by:{failure.reason} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Carrier Distribution", dql: `${base} | summarize count = count(), by:{carrier}`, viz: "PIE_CHART" },
+        { title: "Delivery Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Delivery Success by Zone", dql: `${base} | filter event.subtype == "DELIVERED" | summarize count = count(), by:{zone} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Failure Reasons", dql: `${base} | filter isNotNull(failure.reason) | summarize count = count(), by:{failure.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Carrier Distribution", dql: `${base} | summarize count = count(), by:{carrier}`, viz: "pieChart" },
       ];
     case "logistics/warehouse":
       return [
-        { title: "Warehouse Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Events by Zone", dql: `${base} | summarize count = count(), by:{zone} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Exceptions by Type", dql: `${base} | filter event.subtype == "EXCEPTION" | summarize count = count(), by:{exception.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Events by Warehouse", dql: `${base} | summarize count = count(), by:{warehouse.id}`, viz: "PIE_CHART" },
+        { title: "Warehouse Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Events by Zone", dql: `${base} | summarize count = count(), by:{zone} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Exceptions by Type", dql: `${base} | filter event.subtype == "EXCEPTION" | summarize count = count(), by:{exception.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Events by Warehouse", dql: `${base} | summarize count = count(), by:{warehouse.id}`, viz: "pieChart" },
       ];
     case "logistics/fleet":
       return [
-        { title: "Fleet Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Fault Codes", dql: `${base} | filter isNotNull(fault.code) | summarize count = count(), by:{fault.code} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Faults by Severity", dql: `${base} | filter isNotNull(severity) | summarize count = count(), by:{severity} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Events by Make", dql: `${base} | summarize count = count(), by:{make}`, viz: "PIE_CHART" },
+        { title: "Fleet Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Fault Codes", dql: `${base} | filter isNotNull(fault.code) | summarize count = count(), by:{fault.code} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Faults by Severity", dql: `${base} | filter isNotNull(severity) | summarize count = count(), by:{severity} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Events by Make", dql: `${base} | summarize count = count(), by:{make}`, viz: "pieChart" },
       ];
     case "energy/smart_grid":
       return [
-        { title: "Grid Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Avg Load Over Time (MW)", dql: `${base} | filter isNotNull(load.mw) | makeTimeseries avg_load = avg(load.mw)`, viz: "GRAPH_CHART" },
-        { title: "Events by Node Type", dql: `${base} | summarize count = count(), by:{node.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Events by Region", dql: `${base} | summarize count = count(), by:{region}`, viz: "PIE_CHART" },
+        { title: "Grid Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Avg Load Over Time (MW)", dql: `${base} | filter isNotNull(load.mw) | makeTimeseries avg_load = avg(load.mw)`, viz: "lineChart" },
+        { title: "Events by Node Type", dql: `${base} | summarize count = count(), by:{node.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Events by Region", dql: `${base} | summarize count = count(), by:{region}`, viz: "pieChart" },
       ];
     case "energy/outage":
       return [
-        { title: "Outage Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Outage Causes", dql: `${base} | filter isNotNull(cause) | summarize count = count(), by:{cause} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Customers Affected Over Time", dql: `${base} | filter isNotNull(customers.affected) | makeTimeseries total = sum(customers.affected)`, viz: "GRAPH_CHART" },
-        { title: "Events by Region", dql: `${base} | summarize count = count(), by:{region}`, viz: "PIE_CHART" },
+        { title: "Outage Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Outage Causes", dql: `${base} | filter isNotNull(cause) | summarize count = count(), by:{cause} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Customers Affected Over Time", dql: `${base} | filter isNotNull(customers.affected) | makeTimeseries total = sum(customers.affected)`, viz: "lineChart" },
+        { title: "Events by Region", dql: `${base} | summarize count = count(), by:{region}`, viz: "pieChart" },
       ];
     case "energy/metering":
       return [
-        { title: "Meter Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "Tamper Types", dql: `${base} | filter event.type == "TAMPER_ALERT" | summarize count = count(), by:{tamper.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Energy Read Over Time (kWh)", dql: `${base} | filter isNotNull(reading.kwh) | makeTimeseries total = sum(reading.kwh)`, viz: "GRAPH_CHART" },
-        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "PIE_CHART" },
+        { title: "Meter Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Tamper Types", dql: `${base} | filter event.type == "TAMPER_ALERT" | summarize count = count(), by:{tamper.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Energy Read Over Time (kWh)", dql: `${base} | filter isNotNull(reading.kwh) | makeTimeseries total = sum(reading.kwh)`, viz: "lineChart" },
+        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
       ];
     case "automotive/telematics":
       return [
-        { title: "Vehicle Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Alerts by Type", dql: `${base} | filter isNotNull(alert.type) | summarize count = count(), by:{alert.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Avg Speed Over Time (km/h)", dql: `${base} | filter isNotNull(speed.kmh) | makeTimeseries avg_speed = avg(speed.kmh)`, viz: "GRAPH_CHART" },
-        { title: "Events by Make", dql: `${base} | summarize count = count(), by:{make}`, viz: "PIE_CHART" },
+        { title: "Vehicle Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Alerts by Type", dql: `${base} | filter isNotNull(alert.type) | summarize count = count(), by:{alert.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Avg Speed Over Time (km/h)", dql: `${base} | filter isNotNull(speed.kmh) | makeTimeseries avg_speed = avg(speed.kmh)`, viz: "lineChart" },
+        { title: "Events by Make", dql: `${base} | summarize count = count(), by:{make}`, viz: "pieChart" },
       ];
     case "automotive/ota_updates":
       return [
-        { title: "OTA Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Failure Reasons", dql: `${base} | filter isNotNull(failure.reason) | summarize count = count(), by:{failure.reason} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Update Outcome Distribution", dql: `${base} | summarize count = count(), by:{event.subtype}`, viz: "PIE_CHART" },
-        { title: "Download Speed Over Time (Mbps)", dql: `${base} | filter isNotNull(download.speed.mbps) | makeTimeseries avg_speed = avg(download.speed.mbps)`, viz: "GRAPH_CHART" },
+        { title: "OTA Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Failure Reasons", dql: `${base} | filter isNotNull(failure.reason) | summarize count = count(), by:{failure.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Update Outcome Distribution", dql: `${base} | summarize count = count(), by:{event.subtype}`, viz: "pieChart" },
+        { title: "Download Speed Over Time (Mbps)", dql: `${base} | filter isNotNull(download.speed.mbps) | makeTimeseries avg_speed = avg(download.speed.mbps)`, viz: "lineChart" },
       ];
     case "automotive/ev_charging":
       return [
-        { title: "EV Sessions Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "Session Failure Reasons", dql: `${base} | filter isNotNull(fail.reason) | summarize count = count(), by:{fail.reason} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Energy Delivered Over Time (kWh)", dql: `${base} | filter isNotNull(session.kwh) | makeTimeseries total = sum(session.kwh)`, viz: "GRAPH_CHART" },
-        { title: "Sessions by Region", dql: `${base} | summarize count = count(), by:{region}`, viz: "PIE_CHART" },
+        { title: "EV Sessions Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Session Failure Reasons", dql: `${base} | filter isNotNull(fail.reason) | summarize count = count(), by:{fail.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Energy Delivered Over Time (kWh)", dql: `${base} | filter isNotNull(session.kwh) | makeTimeseries total = sum(session.kwh)`, viz: "lineChart" },
+        { title: "Sessions by Region", dql: `${base} | summarize count = count(), by:{region}`, viz: "pieChart" },
       ];
     case "airlines/flight_ops":
       return [
-        { title: "Flight Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Delay Reasons", dql: `${base} | filter event.subtype == "DELAYED" | filter isNotNull(delay.reason) | summarize count = count(), by:{delay.reason} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Aircraft Type Distribution", dql: `${base} | filter isNotNull(aircraft.type) | summarize count = count(), by:{aircraft.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Flights by Airline", dql: `${base} | filter event.type == "FLIGHT_EVENT" | summarize count = count(), by:{airline}`, viz: "PIE_CHART" },
+        { title: "Flight Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Delay Reasons", dql: `${base} | filter event.subtype == "DELAYED" | filter isNotNull(delay.reason) | summarize count = count(), by:{delay.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Aircraft Type Distribution", dql: `${base} | filter isNotNull(aircraft.type) | summarize count = count(), by:{aircraft.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Flights by Airline", dql: `${base} | filter event.type == "FLIGHT_EVENT" | summarize count = count(), by:{airline}`, viz: "pieChart" },
       ];
     case "airlines/passenger":
       return [
-        { title: "Passenger Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Events by Channel", dql: `${base} | summarize count = count(), by:{channel} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Class Distribution", dql: `${base} | summarize count = count(), by:{class}`, viz: "PIE_CHART" },
-        { title: "Exceptions Over Time", dql: `${base} | filter isNotNull(exception) | makeTimeseries count = count(), by:{exception}`, viz: "GRAPH_CHART" },
+        { title: "Passenger Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Events by Channel", dql: `${base} | summarize count = count(), by:{channel} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Class Distribution", dql: `${base} | summarize count = count(), by:{class}`, viz: "pieChart" },
+        { title: "Exceptions Over Time", dql: `${base} | filter isNotNull(exception) | makeTimeseries count = count(), by:{exception}`, viz: "lineChart" },
       ];
     case "airlines/ground_ops":
       return [
-        { title: "Ground Ops Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "Turn Delays by Stage", dql: `${base} | filter event.type == "GROUND_DELAY" | summarize count = count(), by:{stage} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Ground Failure Reasons", dql: `${base} | filter event.type == "GROUND_FAILURE" | summarize count = count(), by:{fail.reason} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Avg Turn Time Over Time (min)", dql: `${base} | filter isNotNull(turn.minutes) | makeTimeseries avg = avg(turn.minutes)`, viz: "GRAPH_CHART" },
+        { title: "Ground Ops Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Turn Delays by Stage", dql: `${base} | filter event.type == "GROUND_DELAY" | summarize count = count(), by:{stage} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Ground Failure Reasons", dql: `${base} | filter event.type == "GROUND_FAILURE" | summarize count = count(), by:{fail.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Avg Turn Time Over Time (min)", dql: `${base} | filter isNotNull(turn.minutes) | makeTimeseries avg = avg(turn.minutes)`, viz: "lineChart" },
       ];
     case "iot/device_fleet":
       return [
-        { title: "Device Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Device Status Distribution", dql: `${base} | summarize count = count(), by:{device.status} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Alert Types", dql: `${base} | filter event.subtype == "ALERT" | summarize count = count(), by:{alert.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Events by Device Type", dql: `${base} | summarize count = count(), by:{device.type}`, viz: "PIE_CHART" },
+        { title: "Device Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Device Status Distribution", dql: `${base} | summarize count = count(), by:{device.status} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Alert Types", dql: `${base} | filter event.subtype == "ALERT" | summarize count = count(), by:{alert.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Events by Device Type", dql: `${base} | summarize count = count(), by:{device.type}`, viz: "pieChart" },
       ];
     case "iot/sensor_telemetry":
       return [
-        { title: "Sensor Readings Over Time", dql: `${base} | makeTimeseries count = count(), by:{sensor.type}`, viz: "GRAPH_CHART" },
-        { title: "Readings by Sensor Type", dql: `${base} | summarize count = count(), by:{sensor.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Anomaly Score Over Time", dql: `${base} | filter isNotNull(anomaly.score) | makeTimeseries avg_score = avg(anomaly.score)`, viz: "GRAPH_CHART" },
-        { title: "Threshold Breach Distribution", dql: `${base} | filter isNotNull(threshold.type) | summarize count = count(), by:{threshold.type}`, viz: "PIE_CHART" },
+        { title: "Sensor Readings Over Time", dql: `${base} | makeTimeseries count = count(), by:{sensor.type}`, viz: "lineChart" },
+        { title: "Readings by Sensor Type", dql: `${base} | summarize count = count(), by:{sensor.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Anomaly Score Over Time", dql: `${base} | filter isNotNull(anomaly.score) | makeTimeseries avg_score = avg(anomaly.score)`, viz: "lineChart" },
+        { title: "Threshold Breach Distribution", dql: `${base} | filter isNotNull(threshold.type) | summarize count = count(), by:{threshold.type}`, viz: "pieChart" },
       ];
     case "media/video_delivery":
       return [
-        { title: "Playback Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Errors by Code", dql: `${base} | filter event.subtype == "PLAYBACK_ERROR" | summarize count = count(), by:{error.code} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Sessions by Device Type", dql: `${base} | summarize count = count(), by:{device.type}`, viz: "PIE_CHART" },
-        { title: "Avg Rebuffering Ratio Over Time", dql: `${base} | filter isNotNull(rebuffering.ratio) | makeTimeseries avg_rebuf = avg(rebuffering.ratio)`, viz: "GRAPH_CHART" },
+        { title: "Playback Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Errors by Code", dql: `${base} | filter event.subtype == "PLAYBACK_ERROR" | summarize count = count(), by:{error.code} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Sessions by Device Type", dql: `${base} | summarize count = count(), by:{device.type}`, viz: "pieChart" },
+        { title: "Avg Rebuffering Ratio Over Time", dql: `${base} | filter isNotNull(rebuffering.ratio) | makeTimeseries avg_rebuf = avg(rebuffering.ratio)`, viz: "lineChart" },
       ];
     case "media/live_streaming":
       return [
-        { title: "Viewers Over Time", dql: `${base} | filter event.type == "LIVE_STREAM" | makeTimeseries avg_viewers = avg(viewers)`, viz: "GRAPH_CHART" },
-        { title: "Stream Events by Type", dql: `${base} | summarize count = count(), by:{event.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Events by CDN PoP", dql: `${base} | filter isNotNull(cdn.pop) | summarize count = count(), by:{cdn.pop}`, viz: "PIE_CHART" },
-        { title: "Encoder Health Over Time", dql: `${base} | makeTimeseries count = count(), by:{encoder.health}`, viz: "GRAPH_CHART" },
+        { title: "Viewers Over Time", dql: `${base} | filter event.type == "LIVE_STREAM" | makeTimeseries avg_viewers = avg(viewers)`, viz: "lineChart" },
+        { title: "Stream Events by Type", dql: `${base} | summarize count = count(), by:{event.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Events by CDN PoP", dql: `${base} | filter isNotNull(cdn.pop) | summarize count = count(), by:{cdn.pop}`, viz: "pieChart" },
+        { title: "Encoder Health Over Time", dql: `${base} | makeTimeseries count = count(), by:{encoder.health}`, viz: "lineChart" },
       ];
     case "media/ad_insertion":
       return [
-        { title: "Ad Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "GRAPH_CHART" },
-        { title: "Ad Error Reasons", dql: `${base} | filter event.subtype == "AD_ERROR" | summarize count = count(), by:{error.type} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Fill Rate Over Time", dql: `${base} | filter isNotNull(fill.rate) | makeTimeseries avg_fill = avg(fill.rate)`, viz: "GRAPH_CHART" },
-        { title: "Ad Type Distribution", dql: `${base} | summarize count = count(), by:{ad.type}`, viz: "PIE_CHART" },
+        { title: "Ad Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Ad Error Reasons", dql: `${base} | filter event.subtype == "AD_ERROR" | summarize count = count(), by:{error.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Fill Rate Over Time", dql: `${base} | filter isNotNull(fill.rate) | makeTimeseries avg_fill = avg(fill.rate)`, viz: "lineChart" },
+        { title: "Ad Type Distribution", dql: `${base} | summarize count = count(), by:{ad.type}`, viz: "pieChart" },
       ];
 
     // ── Default ────────────────────────────────────────────────────────────
     default:
       return [
-        { title: "Events by Type Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "GRAPH_CHART" },
-        { title: "Events by Service", dql: `${base} | summarize count = count(), by:{service.name} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Events by Region", dql: `${base} | summarize count = count(), by:{geo.region} | sort count desc`, viz: "CATEGORICAL_BAR_CHART" },
-        { title: "Log Level Distribution", dql: `${base} | summarize count = count(), by:{log.level}`, viz: "PIE_CHART" },
+        { title: "Events by Type Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Events by Service", dql: `${base} | summarize count = count(), by:{service.name} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Events by Region", dql: `${base} | summarize count = count(), by:{geo.region} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Log Level Distribution", dql: `${base} | summarize count = count(), by:{log.level}`, viz: "pieChart" },
       ];
   }
 }
@@ -684,47 +699,42 @@ function buildDashboardContent(params: DashboardParams): unknown {
 
   // Row 1: 4 KPI tiles (y=2, h=3, w=6 each)
   kpiDefs.forEach(({ title, dql }, i) => {
-    place(dt(title, dql, "SINGLE_VALUE"), i * 6, 2, 6, 3);
+    place(dt(title, dql, "singleValue"), i * 6, 2, 6, 3);
   });
 
   // Row 2: Event volume over time (full width, y=5, h=5)
   place(
-    dt("Event Volume Over Time", `${base} | makeTimeseries count = count()`, "GRAPH_CHART"),
+    dt("Event Volume Over Time", `${base} | makeTimeseries count = count()`, "lineChart"),
     0, 5, 24, 5,
   );
 
   // Rows 3+: vertical-specific charts, 2 per row at w=12 each
   chartDefs.forEach(({ title, dql, viz }, i) => {
-    place(dt(title, dql, viz ?? "GRAPH_CHART"), (i % 2) * 12, 10 + Math.floor(i / 2) * 5, 12, 5);
+    place(dt(title, dql, viz ?? "lineChart"), (i % 2) * 12, 10 + Math.floor(i / 2) * 5, 12, 5);
   });
 
-  // Final row: Geo distribution (w=16) + log level donut (w=8)
+  // Final row: Geo table (w=16) + log level donut (w=8)
   const finalRow = 10 + Math.ceil(chartDefs.length / 2) * 5;
   place(
     dt(
-      "Geo Distribution",
-      `${base} | summarize count = count(), latitude = avg(geo.lat), longitude = avg(geo.lon), by:{geo.city, geo.country} | filter isNotNull(latitude) | sort count desc | limit 100`,
-      "MAP",
+      "Top Cities by Event Volume",
+      `${base} | summarize count = count(), by:{geo.city, geo.country, geo.region} | sort count desc | limit 100`,
+      "table",
     ),
     0, finalRow, 16, 6,
   );
   place(
-    dt("Log Level Distribution", `${base} | summarize count = count(), by:{log.level}`, "PIE_CHART"),
+    dt("Log Level Distribution", `${base} | summarize count = count(), by:{log.level}`, "donutChart"),
     16, finalRow, 8, 6,
   );
 
   return {
-    version: 21,
+    version: 20,
     variables: [],
     tiles,
     layouts,
-    settings: {
-      defaultTimeframe: {
-        value: { from: "now()-2h", to: "now()" },
-        enabled: true,
-      },
-    },
-    annotations: [],
+    settings: {},
+    importedWithCode: false,
   };
 }
 

@@ -33,6 +33,8 @@ export interface WizardState {
 export interface DeployResult {
   workflowId?: string;
   workflowTitle?: string;
+  dashboardId?: string;
+  dashboardName?: string;
   error?: string;
 }
 

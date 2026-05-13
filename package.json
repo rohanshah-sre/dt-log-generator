@@ -23,6 +23,7 @@
     "@dynatrace-sdk/app-environment": "latest",
     "@dynatrace-sdk/client-automation": "latest",
     "@dynatrace-sdk/client-classic-environment-v2": "latest",
+    "@dynatrace-sdk/client-document": "latest",
     "@dynatrace-sdk/react-hooks": "latest",
     "@dynatrace/strato-components": "^3.0.1",
     "@dynatrace/strato-components-preview": "^3.0.1",

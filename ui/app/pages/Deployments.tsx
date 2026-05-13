@@ -10,6 +10,7 @@ import { COLORS, FONTS } from "../styles/theme";
 import {
   workflowsClient,
   workflowUrl,
+  dashboardUrl,
   pauseWorkflow,
   resumeWorkflow,
   deleteWorkflow,
@@ -20,6 +21,7 @@ interface ParsedMeta {
   usecase?: string;
   scenario?: string;
   created?: string;
+  documentId?: string;
 }
 
 interface DeploymentRow {
@@ -48,6 +50,7 @@ const parseDescription = (desc?: string): ParsedMeta => {
     else if (key === "usecase") out.usecase = value;
     else if (key === "scenario") out.scenario = value;
     else if (key === "created") out.created = value;
+    else if (key === "documentId") out.documentId = value;
   }
   return out;
 };
@@ -447,6 +450,27 @@ export const Deployments: React.FC = () => {
                       >
                         ↗ Workflow
                       </a>
+                      {row.meta.documentId && (
+                        <a
+                          href={dashboardUrl(row.meta.documentId)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            background: "transparent",
+                            color: COLORS.label,
+                            border: `1px solid ${COLORS.cardBorder}`,
+                            padding: "8px 14px",
+                            borderRadius: 8,
+                            textDecoration: "none",
+                            fontWeight: 500,
+                            fontSize: 13,
+                            display: "inline-flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          📊 Dashboard
+                        </a>
+                      )}
                       <Button
                         onClick={() => setConfirmDelete(row)}
                         disabled={busy}

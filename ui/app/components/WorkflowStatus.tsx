@@ -4,7 +4,7 @@ import { Heading, Paragraph, Text } from "@dynatrace/strato-components/typograph
 import { Button } from "@dynatrace/strato-components/buttons";
 import { COLORS, FONTS } from "../styles/theme";
 import { useWizard } from "../lib/wizardContext";
-import { workflowsClient, workflowUrl } from "../lib/dtClients";
+import { workflowsClient, workflowUrl, dashboardUrl } from "../lib/dtClients";
 
 const CopyChip: React.FC<{ value: string }> = ({ value }) => {
   const [copied, setCopied] = useState(false);
@@ -70,6 +70,7 @@ export const WorkflowStatus: React.FC = () => {
   };
 
   const wfLink = r.workflowId ? workflowUrl(r.workflowId) : "";
+  const dbLink = r.dashboardId ? dashboardUrl(r.dashboardId) : "";
 
   return (
     <Flex flexDirection="column" gap={20}>
@@ -86,54 +87,102 @@ export const WorkflowStatus: React.FC = () => {
           ✓ Scenario deployed
         </Heading>
         <Paragraph style={{ color: COLORS.label }}>
-          The workflow is now ingesting logs every minute. Open it in Automation to monitor execution or pause ingestion.
+          The workflow is ingesting logs every minute and a business dashboard is ready with 2 hours of backfilled data.
         </Paragraph>
       </div>
 
       <div
         style={{
-          background: COLORS.cardBg,
-          border: `1px solid ${COLORS.cardBorder}`,
-          borderRadius: 12,
-          padding: 20,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 16,
         }}
       >
-        <Text style={{ color: COLORS.muted, fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>
-          Workflow
-        </Text>
-        <div style={{ color: COLORS.title, fontWeight: 600, marginTop: 6 }}>{r.workflowTitle}</div>
-        <Flex gap={8} alignItems="center" paddingTop={8}>
-          <Text style={{ color: COLORS.label, fontSize: 12, fontFamily: FONTS.mono }}>
-            {r.workflowId}
+        <div
+          style={{
+            background: COLORS.cardBg,
+            border: `1px solid ${COLORS.cardBorder}`,
+            borderRadius: 12,
+            padding: 20,
+          }}
+        >
+          <Text style={{ color: COLORS.muted, fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>
+            Workflow
           </Text>
-          <CopyChip value={r.workflowId ?? ""} />
-        </Flex>
-        <Flex gap={8} paddingTop={12}>
-          <a
-            href={wfLink}
-            target="_blank"
-            rel="noopener noreferrer"
+          <div style={{ color: COLORS.title, fontWeight: 600, marginTop: 6 }}>{r.workflowTitle}</div>
+          <Flex gap={8} alignItems="center" paddingTop={8}>
+            <Text style={{ color: COLORS.label, fontSize: 12, fontFamily: FONTS.mono }}>
+              {r.workflowId}
+            </Text>
+            <CopyChip value={r.workflowId ?? ""} />
+          </Flex>
+          <Flex gap={8} paddingTop={12}>
+            <a
+              href={wfLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                background: COLORS.blue,
+                color: COLORS.title,
+                padding: "8px 14px",
+                borderRadius: 8,
+                textDecoration: "none",
+                fontWeight: 600,
+                fontSize: 13,
+              }}
+            >
+              Open in Automation →
+            </a>
+            <Button
+              onClick={stopWorkflow}
+              disabled={stopping || stopped}
+              style={{ background: stopped ? COLORS.muted : COLORS.pink, color: COLORS.bg, fontWeight: 700 }}
+            >
+              {stopped ? "Stopped" : stopping ? "Stopping…" : "Stop workflow"}
+            </Button>
+          </Flex>
+          {stopErr && <Text style={{ color: COLORS.pink, fontSize: 12, marginTop: 8 }}>{stopErr}</Text>}
+        </div>
+
+        {r.dashboardId && (
+          <div
             style={{
-              background: COLORS.blue,
-              color: COLORS.title,
-              padding: "8px 14px",
-              borderRadius: 8,
-              textDecoration: "none",
-              fontWeight: 600,
-              fontSize: 13,
+              background: COLORS.cardBg,
+              border: `1px solid ${COLORS.cardBorder}`,
+              borderRadius: 12,
+              padding: 20,
             }}
           >
-            Open in Automation →
-          </a>
-          <Button
-            onClick={stopWorkflow}
-            disabled={stopping || stopped}
-            style={{ background: stopped ? COLORS.muted : COLORS.pink, color: COLORS.bg, fontWeight: 700 }}
-          >
-            {stopped ? "Stopped" : stopping ? "Stopping…" : "Stop workflow"}
-          </Button>
-        </Flex>
-        {stopErr && <Text style={{ color: COLORS.pink, fontSize: 12, marginTop: 8 }}>{stopErr}</Text>}
+            <Text style={{ color: COLORS.muted, fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>
+              Dashboard
+            </Text>
+            <div style={{ color: COLORS.title, fontWeight: 600, marginTop: 6 }}>{r.dashboardName}</div>
+            <Flex gap={8} alignItems="center" paddingTop={8}>
+              <Text style={{ color: COLORS.label, fontSize: 12, fontFamily: FONTS.mono }}>
+                {r.dashboardId}
+              </Text>
+              <CopyChip value={r.dashboardId} />
+            </Flex>
+            <Flex gap={8} paddingTop={12}>
+              <a
+                href={dbLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  background: COLORS.purple,
+                  color: COLORS.title,
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  textDecoration: "none",
+                  fontWeight: 600,
+                  fontSize: 13,
+                }}
+              >
+                Open Dashboard →
+              </a>
+            </Flex>
+          </div>
+        )}
       </div>
 
       <Flex justifyContent="flex-end">

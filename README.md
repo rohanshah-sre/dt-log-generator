@@ -14,9 +14,8 @@ The demo story: *"Here's what Dynatrace surfaces from your logs the moment you c
 2. LaunchLog deploys an **Automation Workflow** to your tenant
 3. The workflow runs on a schedule, injecting structured log events into Grail every few minutes
 4. Logs include business-context fields (transaction amounts, fraud scores, flight delays, OEE scores, etc.) plus geographic coordinates for map visualisations
-5. You walk the prospect through DQL queries that extract business insights from those logs in real time
-
-No dashboards are pre-built — the point is to show DQL pulling meaning from logs organically during the conversation.
+5. A **Dynatrace Dashboard** is created automatically via the Documents API — a deep link is provided post-deploy: `{environmentUrl}/ui/apps/dynatrace.dashboards/reports/{documentId}`
+6. You walk the prospect through DQL queries that extract business insights from those logs in real time
 
 ---
 
@@ -91,6 +90,8 @@ automation:workflows:run
 storage:logs:write
 storage:logs:read
 environment-api:entities:read
+document:write
+document:read
 ```
 
 Save the **Client ID** — you'll need it in the next step.
@@ -112,7 +113,9 @@ Save the **Client ID** — you'll need it in the next step.
       "automation:workflows:run",
       "storage:logs:write",
       "storage:logs:read",
-      "environment-api:entities:read"
+      "environment-api:entities:read",
+      "document:write",
+      "document:read"
     ]
   }
 }
@@ -150,9 +153,10 @@ https://{your-tenant}.apps.dynatrace.com/ui/apps/my.launchlog
 1. Open LaunchLog in your tenant
 2. Select a vertical and use case
 3. Enter a company name and scenario parameters
-4. Click **Deploy** — the workflow is created and starts running
-5. After 2–3 minutes, verify logs are flowing: **Logs → filter `log.source == "launchlog-..."`**
-6. Use the **Deployments** tab to manage active scenarios (pause, resume, delete)
+4. Click **Deploy** — the workflow is created and a dashboard is generated immediately
+5. The first workflow execution backfills **2 hours of historical log data** so the dashboard has immediate data to visualise
+6. After 2–3 minutes, verify logs are flowing: **Logs → filter `log.source == "launchlog-..."`**
+7. Use the **Deployments** tab to manage active scenarios (pause, resume, delete) — each entry includes direct links to both the workflow and the dashboard
 
 Workflows are named `[LaunchLog] {Company} — {Use Case}` and appear in **Automation → Workflows**.
 

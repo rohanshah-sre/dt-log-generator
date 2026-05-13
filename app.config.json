@@ -12,7 +12,9 @@
       { "name": "automation:workflows:run", "comment": "run the workflow on demand" },
       { "name": "storage:logs:write", "comment": "ingest generated logs into Grail" },
       { "name": "storage:logs:read", "comment": "read back ingested logs in DQL queries" },
-      { "name": "environment-api:entities:read", "comment": "resolve host/service entities for log enrichment" }
+      { "name": "environment-api:entities:read", "comment": "resolve host/service entities for log enrichment" },
+      { "name": "document:documents:write", "comment": "create the log-gen dashboard" },
+      { "name": "document:documents:read", "comment": "read back created dashboards" }
     ]
   }
 }

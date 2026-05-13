@@ -45,6 +45,7 @@ export const buildJavaScriptTaskCode = (cfg: GeneratorConfig): string => {
     errorRate: cfg.errorRate,
     services: cfg.services,
     hosts: cfg.hosts,
+    firstRunAt: new Date().toISOString(),
   });
 
   return `import { logsClient } from "@dynatrace-sdk/client-classic-environment-v2";
@@ -135,13 +136,30 @@ export default async function ({ execution_id }) {
   const target = Math.max(1, Math.round((CFG.logsPerMinute / 60) * BATCH_SECONDS));
   const now = Date.now();
   const lines = [];
+
+  // 2-hour historical backfill on first run (within 3 min of initial deploy)
+  const isFirstRun = now - new Date(CFG.firstRunAt).getTime() < 180_000;
+  if (isFirstRun) {
+    const BACKFILL_INTERVALS = 24;           // 24 × 5-min intervals = 2 h
+    const INTERVAL_MS = 5 * 60 * 1000;
+    const backfillStart = now - BACKFILL_INTERVALS * INTERVAL_MS;
+    for (let iv = 0; iv < BACKFILL_INTERVALS; iv++) {
+      const start = backfillStart + iv * INTERVAL_MS;
+      for (let i = 0; i < target; i++) {
+        lines.push(buildLine(new Date(start + Math.floor(r() * INTERVAL_MS))));
+      }
+    }
+    console.log("[" + execution_id + "] backfill: " + lines.length + " logs across 2 h for scenario=" + CFG.scenarioName);
+  }
+
+  // Regular 1-minute batch
   let t = now - BATCH_SECONDS * 1000;
   for (let i = 0; i < target; i++) {
     t += intBetween(50, 500);
     if (t > now) t = now;
     lines.push(buildLine(new Date(t)));
   }
-  console.log("[" + execution_id + "] generating " + lines.length + " logs for scenario=" + CFG.scenarioName);
+  console.log("[" + execution_id + "] ingesting " + lines.length + " logs for scenario=" + CFG.scenarioName);
 
   // Logs Ingest API accepts an array of log records; chunk to keep payload safe.
   const CHUNK = 500;
@@ -532,6 +550,7 @@ const buildPackBundle = (): string => `(() => {
 
 export const buildWorkflowDescriptor = (
   cfg: GeneratorConfig,
+  documentId?: string,
 ): WorkflowDescriptor => {
   const script = buildJavaScriptTaskCode(cfg);
   const created = new Date().toISOString();
@@ -539,7 +558,8 @@ export const buildWorkflowDescriptor = (
   // can parse it back. Keep this format stable — see Deployments.tsx parser.
   const description =
     `LaunchLog | vertical:${cfg.vertical} | usecase:${cfg.useCase} | scenario:${cfg.scenarioName}` +
-    ` | created:${created}`;
+    ` | created:${created}` +
+    (documentId ? ` | documentId:${documentId}` : "");
   return {
     title: `[LaunchLog] ${cfg.scenarioName}`,
     description,
