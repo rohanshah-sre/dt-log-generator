@@ -14,46 +14,341 @@ const Q_SETTINGS = {
   enableSampling: false,
 };
 
-// Viz types use camelCase tokens as required by the Dynatrace Dashboards JSON schema
 type Viz =
   | "singleValue"
   | "lineChart"
   | "areaChart"
+  | "barChart"
   | "categoricalBarChart"
   | "pieChart"
   | "donutChart"
+  | "bubbleMap"
   | "honeycomb"
   | "table";
 
 const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
-function vizSettings(viz: Viz): Record<string, unknown> {
-  if (viz === "singleValue") {
-    return {
-      singleValue: { labelMode: "none", trend: { isVisible: true } },
-      thresholds: [],
-    };
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-vertical color palette
+// ─────────────────────────────────────────────────────────────────────────────
+const PALETTE: Record<string, [string, string, string, string, string]> = {
+  financial: ["#2EB04C", "#0071CE", "#FFC220", "#9B59B6", "#FF5722"],
+  healthcare: ["#00A39C", "#005EB8", "#FF6B6B", "#FFC220", "#7B1FA2"],
+  retail: ["#0071CE", "#F47C20", "#FFC220", "#2EB04C", "#9B59B6"],
+  telco: ["#7B2CBF", "#FF4081", "#00BCD4", "#FFC107", "#43A047"],
+  manufacturing: ["#546E7A", "#F47C20", "#1565C0", "#FFC107", "#43A047"],
+  insurance: ["#003366", "#FFB300", "#2EB04C", "#FF5722", "#00BCD4"],
+  gaming: ["#E91E63", "#00BCD4", "#FFC107", "#9C27B0", "#43A047"],
+  logistics: ["#00ACC1", "#FB8C00", "#7B1FA2", "#43A047", "#E53935"],
+  energy: ["#FFC107", "#2EB04C", "#1976D2", "#FF5722", "#00BCD4"],
+  automotive: ["#D32F2F", "#1565C0", "#FFC107", "#43A047", "#7B1FA2"],
+  pos: ["#00ACC1", "#FB8C00", "#7B1FA2", "#43A047", "#1565C0"],
+  airlines: ["#1E88E5", "#FFC107", "#E53935", "#43A047", "#9C27B0"],
+  iot: ["#3F51B5", "#C0CA33", "#FF5722", "#00BCD4", "#FB8C00"],
+  media: ["#FF5722", "#1976D2", "#2EB04C", "#FFC107", "#9C27B0"],
+};
+const paletteFor = (vertical: string): readonly string[] =>
+  PALETTE[vertical] ?? PALETTE.financial;
+
+// Verticals where a geographic map adds business meaning (physical footprint,
+// store / vehicle / device / route locations). For others we swap the map tile
+// for a multi-series event-type timeseries.
+const GEO_RELEVANT: ReadonlySet<string> = new Set([
+  "retail",
+  "telco",
+  "logistics",
+  "energy",
+  "automotive",
+  "pos",
+  "airlines",
+  "iot",
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-detection helpers (icon / unit / record-field / thresholds)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Extract the field name produced by the final stage of a DQL query.
+function recordFieldOf(dql: string): string {
+  const segments = dql.split("|").map((s) => s.trim());
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const seg = segments[i];
+    if (/^fieldsAdd\s+/i.test(seg)) {
+      const m = seg.match(/fieldsAdd\s+([a-zA-Z_][\w.]*)\s*=/);
+      if (m) return m[1];
+    }
+    if (/^summarize\s+/i.test(seg)) {
+      const assigns = [...seg.matchAll(/([a-zA-Z_][\w.]*)\s*=/g)];
+      if (assigns.length > 0) return assigns[assigns.length - 1][1];
+    }
   }
-  if (viz === "table") {
-    return { table: { rowDensity: "comfortable" }, thresholds: [] };
-  }
-  return { chartSettings: { truncationMode: "middle" }, thresholds: [] };
+  return "count";
 }
 
-function dt(title: string, query: string, viz: Viz = "singleValue") {
-  return {
-    type: "data",
-    title,
-    query,
-    querySettings: Q_SETTINGS,
-    visualization: viz,
-    visualizationSettings: vizSettings(viz),
-  };
+type IconName =
+  | "MoneyIcon"
+  | "AnalyticsIcon"
+  | "AlertIcon"
+  | "UserIcon"
+  | "ShoppingCartIcon"
+  | "GlobeIcon"
+  | "MobileIcon"
+  | "TruckIcon"
+  | "HeartIcon";
+
+function iconFor(title: string): IconName {
+  const t = title.toLowerCase();
+  if (/revenue|value|premium|notional|sales/.test(t)) return "MoneyIcon";
+  if (/alert|fraud|failure|outage|breach|error|reject|stockout|denial|complaint|fault|exception|incident|crash|delay|cancel/.test(t)) return "AlertIcon";
+  if (/csat|satisfaction|score|quality/.test(t)) return "HeartIcon";
+  if (/user|player|visitor|patient|customer|passenger|subscriber/.test(t)) return "UserIcon";
+  if (/order|cart|checkout|sale|purchase|transaction|po\b|pickup/.test(t)) return "ShoppingCartIcon";
+  if (/mobile|app|sms/.test(t)) return "MobileIcon";
+  if (/shipment|delivery|fleet|vehicle|truck|pallet|carrier|warehouse|logistic/.test(t)) return "TruckIcon";
+  if (/online|active|device|network|stream|web|portal|grid|meter|service/.test(t)) return "GlobeIcon";
+  return "AnalyticsIcon";
 }
+
+interface UnitOverride {
+  identifier: string;
+  unitCategory: string;
+  baseUnit: string;
+  displayUnit: null;
+  decimals: number;
+  suffix?: string;
+  delimiter: boolean;
+}
+
+function unitFor(title: string, field: string): UnitOverride {
+  const t = title;
+  const lo = t.toLowerCase();
+  if (/\$|usd|revenue|value|premium|notional/i.test(t)) {
+    return {
+      identifier: field,
+      unitCategory: "unspecified",
+      baseUnit: "count",
+      displayUnit: null,
+      decimals: /avg|aov|basket|price/i.test(t) ? 2 : 0,
+      suffix: " USD",
+      delimiter: true,
+    };
+  }
+  if (/%|rate|compliance|conversion|approval/i.test(t)) {
+    return {
+      identifier: field,
+      unitCategory: "percentage",
+      baseUnit: "percent",
+      displayUnit: null,
+      decimals: 1,
+      suffix: "%",
+      delimiter: true,
+    };
+  }
+  if (/\(ms\)|latency|response time/i.test(t)) {
+    return { identifier: field, unitCategory: "unspecified", baseUnit: "count", displayUnit: null, decimals: 0, suffix: " ms", delimiter: true };
+  }
+  if (/\(min\)/i.test(t)) {
+    return { identifier: field, unitCategory: "unspecified", baseUnit: "count", displayUnit: null, decimals: 1, suffix: " min", delimiter: true };
+  }
+  if (/\(kwh\)/i.test(lo)) {
+    return { identifier: field, unitCategory: "unspecified", baseUnit: "count", displayUnit: null, decimals: 0, suffix: " kWh", delimiter: true };
+  }
+  if (/\(mw\)/i.test(lo)) {
+    return { identifier: field, unitCategory: "unspecified", baseUnit: "count", displayUnit: null, decimals: 1, suffix: " MW", delimiter: true };
+  }
+  if (/\(km\/h\)/i.test(lo)) {
+    return { identifier: field, unitCategory: "unspecified", baseUnit: "count", displayUnit: null, decimals: 1, suffix: " km/h", delimiter: true };
+  }
+  if (/\(mbps\)/i.test(lo)) {
+    return { identifier: field, unitCategory: "unspecified", baseUnit: "count", displayUnit: null, decimals: 1, suffix: " Mbps", delimiter: true };
+  }
+  return { identifier: field, unitCategory: "unspecified", baseUnit: "count", displayUnit: null, decimals: 0, delimiter: true };
+}
+
+type Direction = "higher-good" | "lower-good" | "none";
+
+function directionFor(title: string): Direction {
+  const t = title.toLowerCase();
+  // Bad-when-high rates take precedence
+  if (/(failure|reject|decline|denial|cancellation|abandon|lapse|defect|disconnect|return|fail)\s*rate/.test(t)) return "lower-good";
+  if (/(success|compliance|approval|on-?time|conversion|win|delivery|pass|adjudication|uptime|fill)\s*rate/.test(t)) return "higher-good";
+  if (/(failure|reject|decline|denial|abandon|defect|disconnect|fail).*%/.test(t)) return "lower-good";
+  if (/(success|compliance|approval|on-?time|conversion|uptime|fill).*%/.test(t)) return "higher-good";
+  return "none";
+}
+
+interface ColorRule {
+  value: number;
+  comparator: "≥" | ">" | "<" | "≤";
+  field: string;
+  colorMode: "custom-color";
+  customColor: { Default: string };
+}
+
+const SUCCESS = "var(--dt-colors-charts-status-success-default, #2ab06f)";
+const WARNING = "var(--dt-colors-charts-status-warning-default, #f5d30f)";
+const CRITICAL = "var(--dt-colors-charts-status-critical-default, #c62239)";
+
+function thresholdsFor(field: string, direction: Direction): ColorRule[] {
+  if (direction === "higher-good") {
+    return [
+      { value: 95, comparator: "≥", field, colorMode: "custom-color", customColor: { Default: SUCCESS } },
+      { value: 80, comparator: "≥", field, colorMode: "custom-color", customColor: { Default: WARNING } },
+      { value: 0, comparator: "≥", field, colorMode: "custom-color", customColor: { Default: CRITICAL } },
+    ];
+  }
+  if (direction === "lower-good") {
+    return [
+      { value: 5, comparator: "<", field, colorMode: "custom-color", customColor: { Default: SUCCESS } },
+      { value: 15, comparator: "<", field, colorMode: "custom-color", customColor: { Default: WARNING } },
+      { value: 15, comparator: "≥", field, colorMode: "custom-color", customColor: { Default: CRITICAL } },
+    ];
+  }
+  return [];
+}
+
+function labelFromTitle(title: string): string {
+  return title
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase()
+    .slice(0, 24);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tile builders
+// ─────────────────────────────────────────────────────────────────────────────
 
 function md(content: string) {
   return { type: "markdown", content };
 }
+
+function kpiTile(title: string, query: string) {
+  const field = recordFieldOf(query);
+  const direction = directionFor(title);
+  const rules = thresholdsFor(field, direction);
+  const unit = unitFor(title, field);
+  const icon = iconFor(title);
+
+  const coloring: Record<string, unknown> = {};
+  if (rules.length > 0) coloring.colorRules = rules;
+
+  return {
+    title,
+    type: "data",
+    query,
+    querySettings: Q_SETTINGS,
+    visualization: "singleValue",
+    visualizationSettings: {
+      singleValue: {
+        label: labelFromTitle(title),
+        recordField: field,
+        prefixIcon: icon,
+        isIconVisible: true,
+        colorThresholdTarget: "background",
+        trend: { isVisible: true },
+      },
+      unitsOverrides: [unit],
+      ...(rules.length > 0 ? { coloring } : {}),
+    },
+  };
+}
+
+function sectionTile(label: string, icon: IconName, color: string) {
+  return {
+    title: "",
+    type: "data",
+    query: `data record(section="${esc(label)}")`,
+    querySettings: Q_SETTINGS,
+    visualization: "singleValue",
+    visualizationSettings: {
+      singleValue: {
+        labelMode: "none",
+        isIconVisible: true,
+        prefixIcon: icon,
+        colorThresholdTarget: "background",
+      },
+      autoSelectVisualization: false,
+      coloring: {
+        colorRules: [
+          {
+            value: "x",
+            comparator: "!=",
+            field: "section",
+            colorMode: "custom-color",
+            customColor: color,
+          },
+        ],
+      },
+    },
+  };
+}
+
+function chartTile(title: string, query: string, viz: Viz, palette: readonly string[]) {
+  const field = recordFieldOf(query);
+  const settings: Record<string, unknown> = { thresholds: [] };
+
+  if (viz === "lineChart" || viz === "areaChart" || viz === "barChart") {
+    settings.chartSettings = {
+      seriesOverrides: [
+        { seriesId: [field], override: { color: palette[0] } },
+      ],
+      fieldMapping: {
+        leftAxisValues: [field],
+        timestamp: "timeframe",
+      },
+      gapPolicy: "connect",
+      truncationMode: "middle",
+      legend: { hidden: false },
+    };
+  } else if (viz === "categoricalBarChart") {
+    settings.chartSettings = {
+      xAxisLabelVisible: true,
+      truncationMode: "auto",
+      legend: { hidden: true },
+    };
+  } else if (viz === "pieChart" || viz === "donutChart") {
+    settings.chartSettings = {
+      circleChartSettings: {
+        valueType: "relative",
+        showTotalValue: true,
+        groupingThresholdType: "relative",
+      },
+    };
+    settings.legend = { ratio: 27 };
+  } else if (viz === "bubbleMap") {
+    settings.regions = { showRegions: false };
+    settings.mapRadius = { radiusRange: [4, 28] };
+    settings.tooltip = { showCustomFields: true };
+    settings.legend = { showLegend: true, position: "auto", ratio: 13 };
+    settings.dataMapping = { radius: field, dimension: "city" };
+    settings.coloring = {
+      thresholdRules: [
+        { color: palette[2], min: null, max: 100, label: "Lower volume", colorMode: "single-color", mode: "range", position: "left", strokeOnly: false },
+        { color: palette[1], min: 100, max: 1000, label: "Mid volume", colorMode: "single-color", mode: "range", position: "left", strokeOnly: false },
+        { color: palette[0], min: 1000, max: null, label: "High volume", colorMode: "single-color", mode: "range", position: "left", strokeOnly: false },
+      ],
+    };
+  } else if (viz === "table") {
+    settings.table = { rowDensity: "comfortable" };
+  } else {
+    settings.chartSettings = { truncationMode: "middle" };
+  }
+
+  return {
+    title,
+    type: "data",
+    query,
+    querySettings: Q_SETTINGS,
+    visualization: viz,
+    visualizationSettings: settings,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KPI / Chart definitions (per use case) — preserved from prior implementation
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface TileDef {
   title: string;
@@ -61,14 +356,9 @@ interface TileDef {
   viz?: Viz;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// KPIs — four single-value tiles per use case
-// ─────────────────────────────────────────────────────────────────────────────
-function getKPIs(q: string, ucKey: string): TileDef[] {
-  const base = `fetch logs | filter scenario.name == "${q}"`;
-
+function getKPIs(base: string, ucKey: string): TileDef[] {
   switch (ucKey) {
-    // ── Financial ──────────────────────────────────────────────────────────
+    // ── Financial Services ─────────────────────────────────────────────────
     case "financial/payments":
       return [
         { title: "Transaction Success Rate (%)", dql: `${base} | summarize total = count(), ok = countIf(event.type == "TRANSACTION_COMPLETED") | fieldsAdd rate = ok / total * 100` },
@@ -114,7 +404,7 @@ function getKPIs(q: string, ucKey: string): TileDef[] {
         { title: "Unique Facilities", dql: `${base} | summarize count = countDistinctExact(facility)` },
       ];
 
-    // ── Retail ─────────────────────────────────────────────────────────────
+    // ── Retail & E-Commerce ────────────────────────────────────────────────
     case "retail/orders":
       return [
         { title: "Delivery Rate (%)", dql: `${base} | summarize total = count(), delivered = countIf(order.status == "DELIVERED") | fieldsAdd rate = delivered / total * 100` },
@@ -137,7 +427,7 @@ function getKPIs(q: string, ucKey: string): TileDef[] {
         { title: "p95 Page Latency (ms)", dql: `${base} | filter isNotNull(latency_ms) | summarize p95 = percentile(latency_ms, 95)` },
       ];
 
-    // ── Telco ──────────────────────────────────────────────────────────────
+    // ── Telecommunications ─────────────────────────────────────────────────
     case "telco/network":
       return [
         { title: "Threshold Breaches", dql: `${base} | filter threshold.breach == true | summarize count = count()` },
@@ -206,7 +496,7 @@ function getKPIs(q: string, ucKey: string): TileDef[] {
         { title: "Policy Failures", dql: `${base} | filter event.type == "POLICY_FAILURE" | summarize count = count()` },
       ];
 
-    // ── Gaming ─────────────────────────────────────────────────────────────
+    // ── Gaming & Media ─────────────────────────────────────────────────────
     case "gaming/sessions":
       return [
         { title: "Player Logins", dql: `${base} | filter event.subtype == "LOGIN" | summarize count = count()` },
@@ -229,7 +519,7 @@ function getKPIs(q: string, ucKey: string): TileDef[] {
         { title: "Avg CPU (%)", dql: `${base} | filter isNotNull(cpu.pct) | summarize avg = avg(cpu.pct)` },
       ];
 
-    // ── Logistics ──────────────────────────────────────────────────────────
+    // ── Logistics & Delivery ───────────────────────────────────────────────
     case "logistics/last_mile":
       return [
         { title: "Delivery Success Rate (%)", dql: `${base} | filter event.type == "DELIVERY_EVENT" | summarize total = count(), delivered = countIf(event.subtype == "DELIVERED") | fieldsAdd rate = delivered / total * 100` },
@@ -252,7 +542,7 @@ function getKPIs(q: string, ucKey: string): TileDef[] {
         { title: "Critical Faults", dql: `${base} | filter severity == "CRITICAL" | summarize count = count()` },
       ];
 
-    // ── Energy ─────────────────────────────────────────────────────────────
+    // ── Energy & Utilities ─────────────────────────────────────────────────
     case "energy/smart_grid":
       return [
         { title: "Grid Events", dql: `${base} | filter event.type == "GRID_EVENT" | summarize count = count()` },
@@ -275,7 +565,7 @@ function getKPIs(q: string, ucKey: string): TileDef[] {
         { title: "Total Energy Read (kWh)", dql: `${base} | filter isNotNull(reading.kwh) | summarize total = sum(reading.kwh)` },
       ];
 
-    // ── Automotive ─────────────────────────────────────────────────────────
+    // ── Automotive & Connected Vehicles ────────────────────────────────────
     case "automotive/telematics":
       return [
         { title: "Active Vehicles", dql: `${base} | summarize count = countDistinctExact(vehicle.id)` },
@@ -298,7 +588,7 @@ function getKPIs(q: string, ucKey: string): TileDef[] {
         { title: "Total Revenue ($)", dql: `${base} | filter isNotNull(revenue) | summarize total = sum(revenue)` },
       ];
 
-    // ── Point of Sale ──────────────────────────────────────────────────────
+    // ── Point of Sale & Hospitality ────────────────────────────────────────
     case "pos/transactions":
       return [
         { title: "Sales", dql: `${base} | filter event.subtype == "SALE" | summarize count = count()` },
@@ -321,7 +611,7 @@ function getKPIs(q: string, ucKey: string): TileDef[] {
         { title: "Avg Prep Time (min)", dql: `${base} | filter isNotNull(prep.time_ms) | summarize avg_min = avg(prep.time_ms) / 60000` },
       ];
 
-    // ── Airlines ───────────────────────────────────────────────────────────
+    // ── Airlines & Aviation ────────────────────────────────────────────────
     case "airlines/flight_ops":
       return [
         { title: "On-Time Rate (%)", dql: `${base} | filter event.type == "FLIGHT_EVENT" | summarize total = count(), ontime = countIf(on.time == true) | fieldsAdd rate = ontime / total * 100` },
@@ -344,7 +634,7 @@ function getKPIs(q: string, ucKey: string): TileDef[] {
         { title: "Avg Turn Time (min)", dql: `${base} | filter isNotNull(turn.minutes) | summarize avg = avg(turn.minutes)` },
       ];
 
-    // ── IoT ────────────────────────────────────────────────────────────────
+    // ── IoT & Industrial ───────────────────────────────────────────────────
     case "iot/device_fleet":
       return [
         { title: "Online Devices", dql: `${base} | filter device.status == "ONLINE" | summarize count = countDistinctExact(device.id)` },
@@ -367,7 +657,7 @@ function getKPIs(q: string, ucKey: string): TileDef[] {
         { title: "Update Success Rate (%)", dql: `${base} | summarize total = count(), ok = countIf(event.subtype == "INSTALL_SUCCESS") | fieldsAdd rate = ok / total * 100` },
       ];
 
-    // ── Media ──────────────────────────────────────────────────────────────
+    // ── Media & Streaming ──────────────────────────────────────────────────
     case "media/video_delivery":
       return [
         { title: "Active Sessions", dql: `${base} | summarize count = countDistinctExact(session.id)` },
@@ -401,13 +691,9 @@ function getKPIs(q: string, ucKey: string): TileDef[] {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Vertical-specific charts — four tiles placed in a 2×2 grid below the KPIs
-// ─────────────────────────────────────────────────────────────────────────────
-function getCharts(q: string, ucKey: string): TileDef[] {
-  const base = `fetch logs | filter scenario.name == "${q}"`;
-
+function getCharts(base: string, ucKey: string): TileDef[] {
   switch (ucKey) {
+    // ── Financial Services ─────────────────────────────────────────────────
     case "financial/payments":
       return [
         { title: "Transaction Volume by Type", dql: `${base} | filter event.type == "TRANSACTION_COMPLETED" | makeTimeseries count = count(), by:{transaction.type}`, viz: "lineChart" },
@@ -429,6 +715,8 @@ function getCharts(q: string, ucKey: string): TileDef[] {
         { title: "Reject Reasons", dql: `${base} | filter event.type == "ORDER_REJECTED" | summarize count = count(), by:{reject.reason} | sort count desc`, viz: "categoricalBarChart" },
         { title: "Executions by Venue", dql: `${base} | filter event.type == "ORDER_EXECUTED" | summarize count = count(), by:{venue}`, viz: "pieChart" },
       ];
+
+    // ── Healthcare ─────────────────────────────────────────────────────────
     case "healthcare/patient_portal":
       return [
         { title: "Patient Actions Over Time", dql: `${base} | filter event.type == "PATIENT_ACTION" | makeTimeseries count = count(), by:{action}`, viz: "lineChart" },
@@ -450,6 +738,8 @@ function getCharts(q: string, ucKey: string): TileDef[] {
         { title: "Failures by Facility", dql: `${base} | filter event.type == "HL7_FAILURE" | summarize count = count(), by:{facility} | sort count desc`, viz: "categoricalBarChart" },
         { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
       ];
+
+    // ── Retail & E-Commerce ────────────────────────────────────────────────
     case "retail/orders":
       return [
         { title: "Order Volume by Customer Segment", dql: `${base} | makeTimeseries count = count(), by:{customer.segment}`, viz: "lineChart" },
@@ -471,6 +761,8 @@ function getCharts(q: string, ucKey: string): TileDef[] {
         { title: "Checkout Failure Reasons", dql: `${base} | filter event.type == "CHECKOUT_FAILURE" | summarize count = count(), by:{error.code} | sort count desc`, viz: "categoricalBarChart" },
         { title: "Event Type Split", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
       ];
+
+    // ── Telecommunications ─────────────────────────────────────────────────
     case "telco/network":
       return [
         { title: "Network Events by Metric Type", dql: `${base} | makeTimeseries count = count(), by:{metric.type}`, viz: "lineChart" },
@@ -485,6 +777,15 @@ function getCharts(q: string, ucKey: string): TileDef[] {
         { title: "Rating Failures Over Time", dql: `${base} | filter event.type == "RATING_FAILURE" | makeTimeseries count = count()`, viz: "lineChart" },
         { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
       ];
+    case "telco/care":
+      return [
+        { title: "Tickets Over Time by Type", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Tickets by Priority", dql: `${base} | filter isNotNull(priority) | summarize count = count(), by:{priority} | sort priority asc`, viz: "categoricalBarChart" },
+        { title: "Action Mix", dql: `${base} | filter isNotNull(action) | summarize count = count(), by:{action} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Routing Failures Over Time", dql: `${base} | filter event.type == "ROUTING_FAILURE" | makeTimeseries count = count()`, viz: "areaChart" },
+      ];
+
+    // ── Manufacturing ──────────────────────────────────────────────────────
     case "manufacturing/production":
       return [
         { title: "OEE Score Over Time by Line", dql: `${base} | filter isNotNull(oee.score) | makeTimeseries avg_oee = avg(oee.score), by:{line.id}`, viz: "lineChart" },
@@ -506,6 +807,8 @@ function getCharts(q: string, ucKey: string): TileDef[] {
         { title: "SLA Breaches Over Time", dql: `${base} | filter event.type == "SUPPLIER_SLA_BREACH" | makeTimeseries count = count()`, viz: "lineChart" },
         { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
       ];
+
+    // ── Insurance ──────────────────────────────────────────────────────────
     case "insurance/claims":
       return [
         { title: "Claims Volume Over Time", dql: `${base} | makeTimeseries count = count(), by:{claim.status}`, viz: "lineChart" },
@@ -520,6 +823,15 @@ function getCharts(q: string, ucKey: string): TileDef[] {
         { title: "Premium by Policy Type", dql: `${base} | filter isNotNull(premium) | summarize avg_premium = avg(premium), by:{policy.type} | sort avg_premium desc`, viz: "categoricalBarChart" },
         { title: "Avg Latency Over Time (ms)", dql: `${base} | filter isNotNull(latency_ms) | makeTimeseries avg_latency = avg(latency_ms)`, viz: "lineChart" },
       ];
+    case "insurance/policy":
+      return [
+        { title: "Policy Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Action Mix", dql: `${base} | filter isNotNull(action) | summarize count = count(), by:{action} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Failure Codes", dql: `${base} | filter event.type == "POLICY_FAILURE" | summarize count = count(), by:{error.code} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Action Distribution", dql: `${base} | filter isNotNull(action) | summarize count = count(), by:{action}`, viz: "pieChart" },
+      ];
+
+    // ── Gaming & Media ─────────────────────────────────────────────────────
     case "gaming/sessions":
       return [
         { title: "Player Activity Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
@@ -529,18 +841,20 @@ function getCharts(q: string, ucKey: string): TileDef[] {
       ];
     case "gaming/monetization":
       return [
-        { title: "IAP Revenue Over Time", dql: `${base} | filter event.type == "IAP" | makeTimeseries revenue = sum(amount)`, viz: "lineChart" },
+        { title: "IAP Revenue Over Time", dql: `${base} | filter event.type == "IAP" | makeTimeseries revenue = sum(amount)`, viz: "areaChart" },
         { title: "IAP Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
         { title: "Failure Reasons", dql: `${base} | filter event.type == "IAP_FAILED" | summarize count = count(), by:{error.code} | sort count desc`, viz: "categoricalBarChart" },
         { title: "Revenue by Currency", dql: `${base} | filter event.type == "IAP" | summarize revenue = sum(amount), by:{currency}`, viz: "pieChart" },
       ];
     case "gaming/live_ops":
       return [
-        { title: "Players Online Over Time", dql: `${base} | filter event.type == "LIVEOPS" | makeTimeseries avg_players = avg(players.online)`, viz: "lineChart" },
+        { title: "Players Online Over Time", dql: `${base} | filter event.type == "LIVEOPS" | makeTimeseries avg_players = avg(players.online)`, viz: "areaChart" },
         { title: "CPU Over Time (%)", dql: `${base} | filter isNotNull(cpu.pct) | makeTimeseries avg_cpu = avg(cpu.pct)`, viz: "lineChart" },
         { title: "Incidents by Severity", dql: `${base} | filter event.type == "LIVEOPS_INCIDENT" | summarize count = count(), by:{incident.severity} | sort count desc`, viz: "categoricalBarChart" },
         { title: "Events by Region", dql: `${base} | filter isNotNull(server.region) | summarize count = count(), by:{server.region}`, viz: "pieChart" },
       ];
+
+    // ── Logistics & Delivery ───────────────────────────────────────────────
     case "logistics/last_mile":
       return [
         { title: "Delivery Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
@@ -562,10 +876,12 @@ function getCharts(q: string, ucKey: string): TileDef[] {
         { title: "Faults by Severity", dql: `${base} | filter isNotNull(severity) | summarize count = count(), by:{severity} | sort count desc`, viz: "categoricalBarChart" },
         { title: "Events by Make", dql: `${base} | summarize count = count(), by:{make}`, viz: "pieChart" },
       ];
+
+    // ── Energy & Utilities ─────────────────────────────────────────────────
     case "energy/smart_grid":
       return [
         { title: "Grid Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
-        { title: "Avg Load Over Time (MW)", dql: `${base} | filter isNotNull(load.mw) | makeTimeseries avg_load = avg(load.mw)`, viz: "lineChart" },
+        { title: "Avg Load Over Time (MW)", dql: `${base} | filter isNotNull(load.mw) | makeTimeseries avg_load = avg(load.mw)`, viz: "areaChart" },
         { title: "Events by Node Type", dql: `${base} | summarize count = count(), by:{node.type} | sort count desc`, viz: "categoricalBarChart" },
         { title: "Events by Region", dql: `${base} | summarize count = count(), by:{region}`, viz: "pieChart" },
       ];
@@ -573,21 +889,23 @@ function getCharts(q: string, ucKey: string): TileDef[] {
       return [
         { title: "Outage Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
         { title: "Outage Causes", dql: `${base} | filter isNotNull(cause) | summarize count = count(), by:{cause} | sort count desc`, viz: "categoricalBarChart" },
-        { title: "Customers Affected Over Time", dql: `${base} | filter isNotNull(customers.affected) | makeTimeseries total = sum(customers.affected)`, viz: "lineChart" },
+        { title: "Customers Affected Over Time", dql: `${base} | filter isNotNull(customers.affected) | makeTimeseries total = sum(customers.affected)`, viz: "areaChart" },
         { title: "Events by Region", dql: `${base} | summarize count = count(), by:{region}`, viz: "pieChart" },
       ];
     case "energy/metering":
       return [
         { title: "Meter Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
         { title: "Tamper Types", dql: `${base} | filter event.type == "TAMPER_ALERT" | summarize count = count(), by:{tamper.type} | sort count desc`, viz: "categoricalBarChart" },
-        { title: "Energy Read Over Time (kWh)", dql: `${base} | filter isNotNull(reading.kwh) | makeTimeseries total = sum(reading.kwh)`, viz: "lineChart" },
+        { title: "Energy Read Over Time (kWh)", dql: `${base} | filter isNotNull(reading.kwh) | makeTimeseries total = sum(reading.kwh)`, viz: "areaChart" },
         { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
       ];
+
+    // ── Automotive & Connected Vehicles ────────────────────────────────────
     case "automotive/telematics":
       return [
         { title: "Vehicle Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
         { title: "Alerts by Type", dql: `${base} | filter isNotNull(alert.type) | summarize count = count(), by:{alert.type} | sort count desc`, viz: "categoricalBarChart" },
-        { title: "Avg Speed Over Time (km/h)", dql: `${base} | filter isNotNull(speed.kmh) | makeTimeseries avg_speed = avg(speed.kmh)`, viz: "lineChart" },
+        { title: "Avg Speed Over Time (km/h)", dql: `${base} | filter isNotNull(speed.kmh) | makeTimeseries avg_speed = avg(speed.kmh)`, viz: "areaChart" },
         { title: "Events by Make", dql: `${base} | summarize count = count(), by:{make}`, viz: "pieChart" },
       ];
     case "automotive/ota_updates":
@@ -601,9 +919,34 @@ function getCharts(q: string, ucKey: string): TileDef[] {
       return [
         { title: "EV Sessions Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
         { title: "Session Failure Reasons", dql: `${base} | filter isNotNull(fail.reason) | summarize count = count(), by:{fail.reason} | sort count desc`, viz: "categoricalBarChart" },
-        { title: "Energy Delivered Over Time (kWh)", dql: `${base} | filter isNotNull(session.kwh) | makeTimeseries total = sum(session.kwh)`, viz: "lineChart" },
+        { title: "Energy Delivered Over Time (kWh)", dql: `${base} | filter isNotNull(session.kwh) | makeTimeseries total = sum(session.kwh)`, viz: "areaChart" },
         { title: "Sessions by Region", dql: `${base} | summarize count = count(), by:{region}`, viz: "pieChart" },
       ];
+
+    // ── Point of Sale & Hospitality ────────────────────────────────────────
+    case "pos/transactions":
+      return [
+        { title: "Transaction Volume by Tender", dql: `${base} | filter isNotNull(tender.type) | makeTimeseries count = count(), by:{tender.type}`, viz: "lineChart" },
+        { title: "Errors by Store", dql: `${base} | filter isNotNull(error.code) | summarize count = count(), by:{store.id} | sort count desc | limit 15`, viz: "categoricalBarChart" },
+        { title: "Tender Type Distribution", dql: `${base} | filter isNotNull(tender.type) | summarize count = count(), by:{tender.type}`, viz: "pieChart" },
+        { title: "Voids Over Time", dql: `${base} | filter event.subtype == "VOID" | makeTimeseries count = count()`, viz: "areaChart" },
+      ];
+    case "pos/terminal_health":
+      return [
+        { title: "Status Mix Over Time", dql: `${base} | makeTimeseries count = count(), by:{terminal.status}`, viz: "lineChart" },
+        { title: "Software Versions", dql: `${base} | filter isNotNull(software.version) | summarize count = countDistinctExact(terminal.id), by:{software.version} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Terminals by Region", dql: `${base} | filter isNotNull(region) | summarize count = countDistinctExact(terminal.id), by:{region} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Status Distribution", dql: `${base} | summarize count = count(), by:{terminal.status}`, viz: "pieChart" },
+      ];
+    case "pos/kitchen":
+      return [
+        { title: "KDS Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Activity by Station", dql: `${base} | filter isNotNull(station.id) | summarize count = count(), by:{station.id} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Routing Failure Reasons", dql: `${base} | filter event.type == "KDS_ROUTING_FAILURE" | summarize count = count(), by:{fail.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
+      ];
+
+    // ── Airlines & Aviation ────────────────────────────────────────────────
     case "airlines/flight_ops":
       return [
         { title: "Flight Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
@@ -623,8 +966,10 @@ function getCharts(q: string, ucKey: string): TileDef[] {
         { title: "Ground Ops Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
         { title: "Turn Delays by Stage", dql: `${base} | filter event.type == "GROUND_DELAY" | summarize count = count(), by:{stage} | sort count desc`, viz: "categoricalBarChart" },
         { title: "Ground Failure Reasons", dql: `${base} | filter event.type == "GROUND_FAILURE" | summarize count = count(), by:{fail.reason} | sort count desc`, viz: "categoricalBarChart" },
-        { title: "Avg Turn Time Over Time (min)", dql: `${base} | filter isNotNull(turn.minutes) | makeTimeseries avg = avg(turn.minutes)`, viz: "lineChart" },
+        { title: "Avg Turn Time Over Time (min)", dql: `${base} | filter isNotNull(turn.minutes) | makeTimeseries avg = avg(turn.minutes)`, viz: "areaChart" },
       ];
+
+    // ── IoT & Industrial ───────────────────────────────────────────────────
     case "iot/device_fleet":
       return [
         { title: "Device Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
@@ -636,19 +981,28 @@ function getCharts(q: string, ucKey: string): TileDef[] {
       return [
         { title: "Sensor Readings Over Time", dql: `${base} | makeTimeseries count = count(), by:{sensor.type}`, viz: "lineChart" },
         { title: "Readings by Sensor Type", dql: `${base} | summarize count = count(), by:{sensor.type} | sort count desc`, viz: "categoricalBarChart" },
-        { title: "Anomaly Score Over Time", dql: `${base} | filter isNotNull(anomaly.score) | makeTimeseries avg_score = avg(anomaly.score)`, viz: "lineChart" },
+        { title: "Anomaly Score Over Time", dql: `${base} | filter isNotNull(anomaly.score) | makeTimeseries avg_score = avg(anomaly.score)`, viz: "areaChart" },
         { title: "Threshold Breach Distribution", dql: `${base} | filter isNotNull(threshold.type) | summarize count = count(), by:{threshold.type}`, viz: "pieChart" },
       ];
+    case "iot/firmware":
+      return [
+        { title: "Firmware Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
+        { title: "Failure Reasons", dql: `${base} | filter event.subtype == "INSTALL_FAIL" | summarize count = count(), by:{fail.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Adoption by Target Version", dql: `${base} | filter isNotNull(firmware.version.to) | summarize count = countDistinctExact(device.id), by:{firmware.version.to} | sort count desc | limit 10`, viz: "categoricalBarChart" },
+        { title: "Update Outcome Distribution", dql: `${base} | summarize count = count(), by:{event.subtype}`, viz: "pieChart" },
+      ];
+
+    // ── Media & Streaming ──────────────────────────────────────────────────
     case "media/video_delivery":
       return [
         { title: "Playback Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
         { title: "Errors by Code", dql: `${base} | filter event.subtype == "PLAYBACK_ERROR" | summarize count = count(), by:{error.code} | sort count desc`, viz: "categoricalBarChart" },
         { title: "Sessions by Device Type", dql: `${base} | summarize count = count(), by:{device.type}`, viz: "pieChart" },
-        { title: "Avg Rebuffering Ratio Over Time", dql: `${base} | filter isNotNull(rebuffering.ratio) | makeTimeseries avg_rebuf = avg(rebuffering.ratio)`, viz: "lineChart" },
+        { title: "Avg Rebuffering Ratio Over Time", dql: `${base} | filter isNotNull(rebuffering.ratio) | makeTimeseries avg_rebuf = avg(rebuffering.ratio)`, viz: "areaChart" },
       ];
     case "media/live_streaming":
       return [
-        { title: "Viewers Over Time", dql: `${base} | filter event.type == "LIVE_STREAM" | makeTimeseries avg_viewers = avg(viewers)`, viz: "lineChart" },
+        { title: "Viewers Over Time", dql: `${base} | filter event.type == "LIVE_STREAM" | makeTimeseries avg_viewers = avg(viewers)`, viz: "areaChart" },
         { title: "Stream Events by Type", dql: `${base} | summarize count = count(), by:{event.type} | sort count desc`, viz: "categoricalBarChart" },
         { title: "Events by CDN PoP", dql: `${base} | filter isNotNull(cdn.pop) | summarize count = count(), by:{cdn.pop}`, viz: "pieChart" },
         { title: "Encoder Health Over Time", dql: `${base} | makeTimeseries count = count(), by:{encoder.health}`, viz: "lineChart" },
@@ -657,7 +1011,7 @@ function getCharts(q: string, ucKey: string): TileDef[] {
       return [
         { title: "Ad Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.subtype}`, viz: "lineChart" },
         { title: "Ad Error Reasons", dql: `${base} | filter event.subtype == "AD_ERROR" | summarize count = count(), by:{error.type} | sort count desc`, viz: "categoricalBarChart" },
-        { title: "Fill Rate Over Time", dql: `${base} | filter isNotNull(fill.rate) | makeTimeseries avg_fill = avg(fill.rate)`, viz: "lineChart" },
+        { title: "Fill Rate Over Time", dql: `${base} | filter isNotNull(fill.rate) | makeTimeseries avg_fill = avg(fill.rate)`, viz: "areaChart" },
         { title: "Ad Type Distribution", dql: `${base} | summarize count = count(), by:{ad.type}`, viz: "pieChart" },
       ];
 
@@ -672,13 +1026,23 @@ function getCharts(q: string, ucKey: string): TileDef[] {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Layout assembly
+// ─────────────────────────────────────────────────────────────────────────────
+
 function buildDashboardContent(params: DashboardParams): unknown {
   const { scenarioName, vertical, useCase, customerName, documentName } = params;
   const q = esc(scenarioName);
+  // Base prefix used by every tile query: scenario filter only.
+  // Dashboard variables are declared for discoverability but NOT auto-applied
+  // to base — Dynatrace's `["*"]` wildcard does not expand inside `in()`, so
+  // forcing the filter into every query zero-outs results until the user
+  // narrows the dropdown.
   const base = `fetch logs | filter scenario.name == "${q}"`;
   const ucKey = `${vertical}/${useCase}`;
-  const kpiDefs = getKPIs(q, ucKey);
-  const chartDefs = getCharts(q, ucKey);
+  const kpiDefs = getKPIs(base, ucKey);
+  const chartDefs = getCharts(base, ucKey);
+  const palette = paletteFor(vertical);
 
   const tiles: Record<string, unknown> = {};
   const layouts: Record<string, { x: number; y: number; w: number; h: number }> = {};
@@ -690,46 +1054,98 @@ function buildDashboardContent(params: DashboardParams): unknown {
     idx++;
   };
 
-  // Row 0: markdown header (full width, h=2)
-  const subtitle = customerName ? `  \n**Customer:** ${customerName}` : "";
+  const verticalLabel = vertical.charAt(0).toUpperCase() + vertical.slice(1);
+  const useCaseLabel = useCase.split("_").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
+
+  // Header banner
+  const meta = `**Scenario:** \`${scenarioName}\` &nbsp;·&nbsp; **Vertical:** ${verticalLabel} &nbsp;·&nbsp; **Use Case:** ${useCaseLabel}${customerName ? ` &nbsp;·&nbsp; **Customer:** ${customerName}` : ""}`;
   place(
-    md(`## ${documentName}  \n**Scenario:** ${scenarioName} · **Vertical:** ${vertical} · **Use Case:** ${useCase}${subtitle}`),
-    0, 0, 24, 2,
+    md(`# ${documentName}\n${meta}\n\nReal-time KPI monitoring for **${verticalLabel} / ${useCaseLabel}** — generated by LaunchLog.`),
+    0, 0, 24, 3,
   );
 
-  // Row 1: 4 KPI tiles (y=2, h=3, w=6 each)
+  // ── Overview section ──
+  place(sectionTile("Executive Summary", "AnalyticsIcon", palette[0]), 0, 3, 24, 1);
+
   kpiDefs.forEach(({ title, dql }, i) => {
-    place(dt(title, dql, "singleValue"), i * 6, 2, 6, 3);
+    place(kpiTile(title, dql), i * 6, 4, 6, 4);
   });
 
-  // Row 2: Event volume over time (full width, y=5, h=5)
-  place(
-    dt("Event Volume Over Time", `${base} | makeTimeseries count = count()`, "lineChart"),
-    0, 5, 24, 5,
-  );
+  // ── Activity Trends section ──
+  place(sectionTile("Activity Trends", "GlobeIcon", palette[1]), 0, 8, 24, 1);
 
-  // Rows 3+: vertical-specific charts, 2 per row at w=12 each
+  // Event volume area chart (left) + geo/breakdown tile (right).
+  // Map only renders for verticals with meaningful physical footprint
+  // (retail / telco / logistics / energy / automotive / pos / airlines / iot).
+  // Other verticals get an event-subtype breakdown instead.
+  place(
+    chartTile("Event Volume Over Time", `${base} | makeTimeseries count = count()`, "areaChart", palette),
+    0, 9, 12, 7,
+  );
+  if (GEO_RELEVANT.has(vertical)) {
+    // Geo bubbleMap — flat field names so the viz auto-detects lat/lon and
+    // avoids dotted-identifier issues in `by:{...}` / `fields`.
+    place(
+      chartTile(
+        "Geo Distribution",
+        `${base}
+| filter isNotNull(geo.lat)
+| fieldsRename latitude = geo.lat, longitude = geo.lon, city = geo.city, country = geo.country, region = geo.region
+| summarize count = count(), by:{city, country, region, latitude, longitude}
+| fields latitude, longitude, city, country, region, count`,
+        "bubbleMap",
+        palette,
+      ),
+      12, 9, 12, 7,
+    );
+  } else {
+    place(
+      chartTile(
+        "Event Mix Over Time",
+        `${base} | makeTimeseries count = count(), by:{event.type}`,
+        "lineChart",
+        palette,
+      ),
+      12, 9, 12, 7,
+    );
+  }
+
+  // ── Breakdown section ──
+  place(sectionTile("Breakdown", "AnalyticsIcon", palette[2]), 0, 16, 24, 1);
+
+  // 4 vertical-specific charts in 2×2
   chartDefs.forEach(({ title, dql, viz }, i) => {
-    place(dt(title, dql, viz ?? "lineChart"), (i % 2) * 12, 10 + Math.floor(i / 2) * 5, 12, 5);
+    const col = (i % 2) * 12;
+    const row = 17 + Math.floor(i / 2) * 7;
+    place(chartTile(title, dql, viz ?? "lineChart", palette), col, row, 12, 7);
   });
 
-  // Final row: Geo table (w=16) + log level donut (w=8)
-  const finalRow = 10 + Math.ceil(chartDefs.length / 2) * 5;
+  const breakdownEndRow = 17 + Math.ceil(chartDefs.length / 2) * 7;
+
+  // ── Log Health section ──
+  place(sectionTile("Log Health", "AlertIcon", palette[3]), 0, breakdownEndRow, 24, 1);
+
   place(
-    dt(
-      "Top Cities by Event Volume",
-      `${base} | summarize count = count(), by:{geo.city, geo.country, geo.region} | sort count desc | limit 100`,
-      "table",
+    chartTile(
+      "Log Level Distribution",
+      `${base} | summarize count = count(), by:{log.level}`,
+      "donutChart",
+      palette,
     ),
-    0, finalRow, 16, 6,
+    0, breakdownEndRow + 1, 8, 6,
   );
   place(
-    dt("Log Level Distribution", `${base} | summarize count = count(), by:{log.level}`, "donutChart"),
-    16, finalRow, 8, 6,
+    chartTile(
+      "Top Services by Event Volume",
+      `${base} | summarize count = count(), by:{service.name} | sort count desc | limit 15`,
+      "categoricalBarChart",
+      palette,
+    ),
+    8, breakdownEndRow + 1, 16, 6,
   );
 
   return {
-    version: 20,
+    version: 21,
     variables: [],
     tiles,
     layouts,

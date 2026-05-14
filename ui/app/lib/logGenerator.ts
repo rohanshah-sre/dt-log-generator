@@ -327,6 +327,7 @@ const FIN_FRAUD = {
       "features.evaluated": intBetween(15, 120),
       "inference.latency_ms": intBetween(5, 80),
       "rule.triggered": pick(["VELOCITY_24H", "GEO_ANOMALY", "DEVICE_FINGERPRINT", "BEHAVIOR_MODEL", "NETWORK_GRAPH"]),
+      "fraud.reason": pick(["VELOCITY", "GEO_MISMATCH", "DEVICE_RISK", "BEHAVIOR_DRIFT", "CARD_TESTING", "ACCOUNT_TAKEOVER", "SYNTHETIC_ID"]),
     };
   },
   ok() {
@@ -334,6 +335,7 @@ const FIN_FRAUD = {
       ...FIN_FRAUD.base(),
       "event.type": "FRAUD_SCORED",
       "fraud.score": +numBetween(0.0, 0.4),
+      "action.taken": "ALLOW",
       message: "Transaction scored low risk",
     };
   },
@@ -343,6 +345,7 @@ const FIN_FRAUD = {
       "event.type": "FRAUD_ELEVATED",
       "fraud.score": +numBetween(0.6, 0.85),
       "case.id": `CASE-${randDigits(7)}`,
+      "action.taken": pick(["REVIEW", "STEP_UP_AUTH", "FLAG"]),
       message: "Elevated risk — case opened for review",
     };
   },
@@ -352,6 +355,7 @@ const FIN_FRAUD = {
       "event.type": "FRAUD_BLOCKED",
       "fraud.score": +numBetween(0.85, 0.99),
       "case.id": `CASE-${randDigits(7)}`,
+      "action.taken": "BLOCK",
       message: "Transaction blocked by fraud engine",
     };
   },
@@ -467,18 +471,24 @@ const HC_CLAIMS = {
 };
 
 const HC_EHR = {
-  ok() {
+  base() {
     const types = ["ADT_A01", "ORU_R01", "ORM_O01", "RDS_O13", "MDM_T02"];
     return {
-      "event.type": "HL7_MESSAGE",
       "hl7.message_type": pick(types),
       "facility": pick(["MAIN_HOSPITAL", "WEST_CLINIC", "EAST_CLINIC", "PEDS_CENTER"]),
+    };
+  },
+  ok() {
+    return {
+      ...HC_EHR.base(),
+      "event.type": "HL7_MESSAGE",
       latency_ms: intBetween(20, 600),
       message: "HL7 message processed",
     };
   },
   err() {
     return {
+      ...HC_EHR.base(),
       "event.type": "HL7_FAILURE",
       "error.code": pick(["PARSE_ERROR", "ACK_TIMEOUT", "VALIDATION_FAILED"]),
       "retry.count": intBetween(0, 3),
@@ -487,6 +497,7 @@ const HC_EHR = {
   },
   warn() {
     return {
+      ...HC_EHR.base(),
       "event.type": "HL7_DELAY",
       latency_ms: intBetween(2500, 8000),
       message: "HL7 message processing exceeded SLO",
