@@ -259,20 +259,26 @@ export const pickLogLevel = (errorRate: number): LogLevel => {
   return "INFO";
 };
 
-export const baseFields = (cfg: GeneratorConfig, ts: Date) => ({
-  timestamp: ts.toISOString(),
-  "log.level": "INFO" as LogLevel,
-  "service.name": pick(cfg.services),
-  "trace.id": uuidLike(),
-  "span.id": randHex(16),
-  "dt.entity.host": pick(cfg.hosts),
-  environment: chance(PROD_WEIGHT) ? "production" : "staging",
-  "log.generator": "dt-biz-log-gen",
-  "scenario.vertical": cfg.vertical,
-  "scenario.usecase": cfg.useCase,
-  "scenario.name": cfg.scenarioName,
-  ...geoFields(cfg.vertical),
-});
+export const baseFields = (cfg: GeneratorConfig, ts: Date) => {
+  const host = pick(cfg.hosts);
+  return {
+    timestamp: ts.toISOString(),
+    "log.level": "INFO" as LogLevel,
+    "service.name": pick(cfg.services),
+    "service.version": `v${intBetween(1, 5)}.${intBetween(0, 20)}.${intBetween(0, 30)}`,
+    "trace.id": uuidLike(),
+    "span.id": randHex(16),
+    "dt.entity.host": host,
+    "host.name": host,
+    "host.ip": randPublicIp(),
+    environment: chance(PROD_WEIGHT) ? "production" : "staging",
+    "log.generator": "dt-biz-log-gen",
+    "scenario.vertical": cfg.vertical,
+    "scenario.usecase": cfg.useCase,
+    "scenario.name": cfg.scenarioName,
+    ...geoFields(cfg.vertical),
+  };
+};
 
 // ---- Per-vertical event payload generators ------------------------------
 
@@ -1862,20 +1868,74 @@ const PACKS: Record<string, Pack> = {
   "media/ad_insertion": MEDIA_AD,
 };
 
+// INFO-level event.type variants (mirrors workflowBuilder.ts) so the preview
+// shows a diverse Event Mix matching what the deployed workflow produces.
+const INFO_TYPE_VARIANTS: Record<string, string[]> = {
+  "financial/payments":         ["TRANSACTION_COMPLETED","CARD_AUTHORIZED","SETTLEMENT","REFUND_ISSUED","WALLET_TOPUP"],
+  "financial/fraud":            ["FRAUD_SCORED","TRANSACTION_REVIEWED","RULE_EVALUATED","DEVICE_FINGERPRINT","WHITELIST_HIT"],
+  "financial/trading":          ["ORDER_EXECUTED","ORDER_PLACED","ORDER_AMENDED","QUOTE_REQUEST","TRADE_CONFIRMED"],
+  "healthcare/patient_portal":  ["PATIENT_ACTION","RECORD_VIEW","APPOINTMENT_BOOKED","MESSAGE_SENT","PRESCRIPTION_REFILL"],
+  "healthcare/claims":          ["CLAIM_SUBMITTED","CLAIM_APPROVED","CLAIM_PAID","CLAIM_PENDED","ELIGIBILITY_CHECK"],
+  "healthcare/ehr":             ["HL7_MESSAGE","HL7_ADT","HL7_ORM","HL7_ORU","HL7_ACK"],
+  "retail/orders":              ["ORDER_CREATED","ORDER_PICKED","ORDER_SHIPPED","ORDER_DELIVERED","ORDER_CONFIRMED"],
+  "retail/inventory":           ["STOCK_CHECK","REORDER_TRIGGERED","RECEIVING","CYCLE_COUNT","TRANSFER"],
+  "retail/cx":                  ["BROWSE","SEARCH","ADD_TO_CART","WISHLIST_ADD","PRODUCT_VIEW"],
+  "telco/network":              ["KPI_OK","HEALTH_CHECK","UTILIZATION_SAMPLE","HANDOFF","SIGNAL_REPORT"],
+  "telco/billing":              ["USAGE_EVENT","CDR_RATED","INVOICE_GENERATED","PAYMENT_POSTED","ACCOUNT_ADJUSTED"],
+  "telco/care":                 ["TICKET_UPDATE","CALL_LOGGED","CHAT_LOGGED","KNOWLEDGE_LOOKUP","SURVEY_RESPONSE"],
+  "manufacturing/production":   ["UNIT_PRODUCED","SHIFT_START","OEE_SAMPLE","CHANGEOVER","INSPECTION_PASS"],
+  "manufacturing/quality":      ["INSPECTION_PASS","SAMPLE_TAKEN","CALIBRATION_OK","AUDIT_LOGGED","SPEC_VERIFIED"],
+  "manufacturing/supply_chain": ["PO_EVENT","ASN_RECEIVED","GOODS_RECEIPT","SUPPLIER_CONFIRMED","SHIPMENT_DISPATCHED"],
+  "insurance/claims":           ["CLAIM_OPENED","ADJUSTER_ASSIGNED","INSPECTION_BOOKED","PAYMENT_RELEASED","CLAIM_CLOSED"],
+  "insurance/underwriting":     ["QUOTE_REQUESTED","RISK_SCORED","POLICY_ISSUED","DOCUMENT_UPLOADED","BIND_CONFIRMED"],
+  "insurance/policy":           ["POLICY_RENEWED","ENDORSEMENT","BENEFICIARY_UPDATED","ADDRESS_CHANGE","DOCUMENT_GENERATED"],
+  "gaming/sessions":            ["MATCH_START","MATCH_END","LOGIN","LEVEL_UP","ACHIEVEMENT"],
+  "gaming/monetization":        ["IAP","STORE_VIEW","OFFER_SHOWN","BUNDLE_PURCHASED","CURRENCY_EARNED"],
+  "gaming/live_ops":            ["LIVEOPS","HEALTH_CHECK","DEPLOY_OK","SCALE_OUT","CONFIG_PUSH"],
+  "logistics/last_mile":        ["DELIVERY_EVENT","SCAN_PICKED","SCAN_OUT_FOR_DELIVERY","SCAN_DELIVERED","ROUTE_OPTIMIZED"],
+  "logistics/warehouse":        ["WAREHOUSE_EVENT","INBOUND_RECEIVED","PUTAWAY","PICK","SHIP_CONFIRM"],
+  "logistics/fleet":            ["LOCATION_UPDATE","ROUTE_STARTED","ROUTE_COMPLETED","FUEL_LEVEL","DRIVER_LOGIN"],
+  "energy/smart_grid":          ["GRID_EVENT","SUBSTATION_OK","LOAD_BALANCED","SWITCH_OPERATED","TELEMETRY_SAMPLE"],
+  "energy/outage":              ["RESTORED","CREW_DISPATCHED","ETA_UPDATED","CUSTOMER_NOTIFIED","STATUS_UPDATE"],
+  "energy/metering":            ["METER_READ","INTERVAL_READ","CONNECT","DISCONNECT","COMMAND_ACK"],
+  "automotive/telematics":      ["TRIP_START","TRIP_END","HEARTBEAT","DTC_CLEARED","GEOFENCE_ENTRY"],
+  "automotive/ota_updates":     ["INSTALL_SUCCESS","DOWNLOAD_STARTED","DOWNLOAD_COMPLETED","VERIFY_OK","CAMPAIGN_TARGETED"],
+  "automotive/ev_charging":     ["EV_SESSION","SESSION_STARTED","SESSION_ENDED","RFID_AUTH","RATE_APPLIED"],
+  "pos/transactions":           ["SALE","ITEM_SCANNED","TENDER_APPLIED","DISCOUNT_APPLIED","RECEIPT_PRINTED"],
+  "pos/terminal_health":        ["HEARTBEAT","PERIPHERAL_OK","FIRMWARE_OK","CONFIG_SYNC","NETWORK_OK"],
+  "pos/kitchen":                ["KDS_EVENT","ORDER_RECEIVED","ORDER_FIRED","ORDER_BUMPED","STATION_READY"],
+  "airlines/flight_ops":        ["FLIGHT_EVENT","DEPARTED","ARRIVED","TAXIING","GATE_ASSIGNED"],
+  "airlines/passenger":         ["CHECK_IN","BOARDING","BAG_TAGGED","SEAT_ASSIGNED","UPGRADE"],
+  "airlines/ground_ops":        ["GROUND_OPS","TURNAROUND_OK","FUEL_LOADED","CARGO_LOADED","PUSHBACK"],
+  "iot/device_fleet":           ["HEARTBEAT","TELEMETRY","CONFIG_SYNC","UPDATE_CHECK","REGISTRATION"],
+  "iot/sensor_telemetry":       ["SENSOR_READING","SAMPLE","CALIBRATION","BASELINE","HEARTBEAT"],
+  "iot/firmware":               ["INSTALL_SUCCESS","DOWNLOAD_STARTED","VERIFY_OK","REBOOT","CAMPAIGN_TARGETED"],
+  "media/video_delivery":       ["PLAYBACK_START","PLAYBACK_END","QUALITY_SWITCH","SEEK","HEARTBEAT"],
+  "media/live_streaming":       ["LIVE_STREAM","SEGMENT_DELIVERED","ENCODER_OK","CDN_HIT","HEALTH_CHECK"],
+  "media/ad_insertion":         ["AD_REQUEST","AD_IMPRESSION","AD_COMPLETE","AD_CLICK","BEACON"],
+};
+
 export const generateLogLine = (cfg: GeneratorConfig, ts: Date): Record<string, unknown> => {
   const level = pickLogLevel(cfg.errorRate);
   const base = baseFields(cfg, ts);
   const pack = PACKS[`${cfg.vertical}/${cfg.useCase}`];
+  const categories = INFO_TYPE_VARIANTS[`${cfg.vertical}/${cfg.useCase}`] ?? ["EVENT","HEARTBEAT","SAMPLE","ACTION","CHECK"];
   let payload: Record<string, unknown>;
   if (!pack) {
     payload = { "event.type": "GENERIC_EVENT", message: "Generic business event" };
   } else if (level === "ERROR") payload = pack.err();
   else if (level === "WARN") payload = pack.warn();
   else payload = pack.ok();
+  if (level === "INFO") {
+    payload = { ...payload, "event.type": pick(categories) };
+  }
+  // business.category mirrors event.type so dashboards can filter / group by
+  // a single, always-present field regardless of pack branch.
   return {
     ...base,
     "log.level": level,
     ...payload,
+    "business.category": payload["event.type"],
     content: payload.message ?? "",
   };
 };

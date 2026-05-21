@@ -7,9 +7,9 @@ export type DurationOption = 30 | 60 | 240 | 480 | 1440; // minutes
 export type ServiceCount = 3 | 5 | 8;
 
 export const VOLUME_TO_LPM: Record<LogVolume, number> = {
-  light: 100,
-  medium: 500,
-  heavy: 2000,
+  light: 250,
+  medium: 1000,
+  heavy: 4000,
 };
 
 export const ERROR_RATE_TO_PCT: Record<ErrorRateLevel, number> = {

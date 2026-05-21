@@ -1,7 +1,6 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
-    "baseUrl": ".",
     "declaration": true,
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,
@@ -12,8 +11,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "paths": {},
-    "rootDir": ".",
-    "skipDefaultLibCheck": true,
+    "rootDir": ".",    "skipDefaultLibCheck": true,
     "skipLibCheck": true /* Skip type checking of declaration files. */,
     "sourceMap": true,
     "strictNullChecks": true,

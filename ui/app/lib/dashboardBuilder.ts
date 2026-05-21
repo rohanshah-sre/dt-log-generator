@@ -50,19 +50,7 @@ const PALETTE: Record<string, [string, string, string, string, string]> = {
 const paletteFor = (vertical: string): readonly string[] =>
   PALETTE[vertical] ?? PALETTE.financial;
 
-// Verticals where a geographic map adds business meaning (physical footprint,
-// store / vehicle / device / route locations). For others we swap the map tile
-// for a multi-series event-type timeseries.
-const GEO_RELEVANT: ReadonlySet<string> = new Set([
-  "retail",
-  "telco",
-  "logistics",
-  "energy",
-  "automotive",
-  "pos",
-  "airlines",
-  "iot",
-]);
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Auto-detection helpers (icon / unit / record-field / thresholds)
@@ -170,9 +158,9 @@ type Direction = "higher-good" | "lower-good" | "none";
 function directionFor(title: string): Direction {
   const t = title.toLowerCase();
   // Bad-when-high rates take precedence
-  if (/(failure|reject|decline|denial|cancellation|abandon|lapse|defect|disconnect|return|fail)\s*rate/.test(t)) return "lower-good";
+  if (/(failure|reject|decline|denial|cancellation|abandon|lapse|defect|disconnect|return|fail|error|warning)\s*rate/.test(t)) return "lower-good";
   if (/(success|compliance|approval|on-?time|conversion|win|delivery|pass|adjudication|uptime|fill)\s*rate/.test(t)) return "higher-good";
-  if (/(failure|reject|decline|denial|abandon|defect|disconnect|fail).*%/.test(t)) return "lower-good";
+  if (/(failure|reject|decline|denial|abandon|defect|disconnect|fail|error|warning).*%/.test(t)) return "lower-good";
   if (/(success|compliance|approval|on-?time|conversion|uptime|fill).*%/.test(t)) return "higher-good";
   return "none";
 }
@@ -224,20 +212,47 @@ function md(content: string) {
   return { type: "markdown", content };
 }
 
-function kpiTile(title: string, query: string) {
-  const field = recordFieldOf(query);
+// Vibrant palette reserved for bar / categorical-bar charts so the contrast
+// between aggregate-style charts (line/area/pie) and breakdown bars is clear.
+const BAR_PALETTE: readonly string[] = [
+  "#8E44AD", "#16A085", "#E67E22", "#2980B9", "#C0392B",
+  "#27AE60", "#F39C12", "#1ABC9C", "#D35400", "#7F8C8D",
+];
+
+// Format DQL strings: (1) field rename — every `event.type` reference in
+// dashboard tiles now points to `business.category` (which is set on every
+// log line by the workflow / preview generator to mirror event.type so all
+// filters still match the same vocabulary); (2) cosmetic — insert a newline
+// before every pipe so users see properly-formatted DQL in the tile editor.
+function fmtDql(dql: string): string {
+  return dql
+    .replaceAll("event.type", "business.category")
+    .replace(/\s*\|\s*/g, "\n| ");
+}
+
+function kpiTile(title: string, query: string, accentColor?: string) {
+  const formatted = fmtDql(query);
+  const field = recordFieldOf(formatted);
   const direction = directionFor(title);
   const rules = thresholdsFor(field, direction);
   const unit = unitFor(title, field);
   const icon = iconFor(title);
 
+  // If no threshold-based rules exist but a flat accent color was requested,
+  // use a single always-on background rule so the tile is never colorless.
+  const effectiveRules: ColorRule[] = rules.length > 0
+    ? rules
+    : (accentColor
+        ? [{ value: 0, comparator: "≥", field, colorMode: "custom-color", customColor: { Default: accentColor } } as ColorRule]
+        : []);
+
   const coloring: Record<string, unknown> = {};
-  if (rules.length > 0) coloring.colorRules = rules;
+  if (effectiveRules.length > 0) coloring.colorRules = effectiveRules;
 
   return {
     title,
     type: "data",
-    query,
+    query: formatted,
     querySettings: Q_SETTINGS,
     visualization: "singleValue",
     visualizationSettings: {
@@ -250,7 +265,7 @@ function kpiTile(title: string, query: string) {
         trend: { isVisible: true },
       },
       unitsOverrides: [unit],
-      ...(rules.length > 0 ? { coloring } : {}),
+      ...(effectiveRules.length > 0 ? { coloring } : {}),
     },
   };
 }
@@ -286,27 +301,50 @@ function sectionTile(label: string, icon: IconName, color: string) {
 }
 
 function chartTile(title: string, query: string, viz: Viz, palette: readonly string[]) {
-  const field = recordFieldOf(query);
+  const formatted = fmtDql(query);
+  const field = recordFieldOf(formatted);
   const settings: Record<string, unknown> = { thresholds: [] };
 
   if (viz === "lineChart" || viz === "areaChart" || viz === "barChart") {
-    settings.chartSettings = {
+    // Extract `by:{dim1, dim2, ...}` dimensions from a makeTimeseries clause
+    // so bar charts can render stacked series per dimension.
+    const byMatch = formatted.match(/makeTimeseries[\s\S]*?\bby\s*:\s*\{([^}]+)\}/i);
+    const dims = byMatch
+      ? byMatch[1].split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+    const fieldMapping: Record<string, unknown> = {
+      leftAxisValues: [field],
+      timestamp: "timeframe",
+    };
+    if (viz === "barChart" && dims.length > 0) {
+      fieldMapping.leftAxisDimensions = dims;
+    }
+    // Bar charts use a vibrant alternate palette for visual contrast against
+    // line/area charts on the same dashboard.
+    const seriesColor = viz === "barChart" ? BAR_PALETTE[0] : palette[0];
+    const chartSettings: Record<string, unknown> = {
       seriesOverrides: [
-        { seriesId: [field], override: { color: palette[0] } },
+        { seriesId: [field], override: { color: seriesColor } },
       ],
-      fieldMapping: {
-        leftAxisValues: [field],
-        timestamp: "timeframe",
-      },
+      fieldMapping,
       gapPolicy: "connect",
       truncationMode: "middle",
       legend: { hidden: false },
     };
+    if (viz === "barChart") {
+      chartSettings.barChartSettings = { stacked: true, categoryAxis: "timestamp" };
+      chartSettings.colorPalette = BAR_PALETTE;
+    }
+    settings.chartSettings = chartSettings;
   } else if (viz === "categoricalBarChart") {
     settings.chartSettings = {
       xAxisLabelVisible: true,
       truncationMode: "auto",
       legend: { hidden: true },
+      colorPalette: BAR_PALETTE,
+      seriesOverrides: [
+        { seriesId: [field], override: { color: BAR_PALETTE[1] } },
+      ],
     };
   } else if (viz === "pieChart" || viz === "donutChart") {
     settings.chartSettings = {
@@ -332,6 +370,20 @@ function chartTile(title: string, query: string, viz: Viz, palette: readonly str
     };
   } else if (viz === "table") {
     settings.table = { rowDensity: "comfortable" };
+  } else if (viz === "honeycomb") {
+    // Honeycomb requires a value mapping (which column drives cell color/size).
+    settings.honeycomb = {
+      dataMappings: { value: field },
+      displayedFields: ["service.name"],
+      legend: { hidden: false, position: "auto", ratio: 13 },
+    };
+    settings.coloring = {
+      thresholdRules: [
+        { color: palette[2], min: null, max: 100, label: "Low", colorMode: "single-color", mode: "range", position: "left", strokeOnly: false },
+        { color: palette[1], min: 100, max: 1000, label: "Mid", colorMode: "single-color", mode: "range", position: "left", strokeOnly: false },
+        { color: palette[0], min: 1000, max: null, label: "High", colorMode: "single-color", mode: "range", position: "left", strokeOnly: false },
+      ],
+    };
   } else {
     settings.chartSettings = { truncationMode: "middle" };
   }
@@ -339,7 +391,7 @@ function chartTile(title: string, query: string, viz: Viz, palette: readonly str
   return {
     title,
     type: "data",
-    query,
+    query: formatted,
     querySettings: Q_SETTINGS,
     visualization: viz,
     visualizationSettings: settings,
@@ -1033,14 +1085,16 @@ function getCharts(base: string, ucKey: string): TileDef[] {
 function buildDashboardContent(params: DashboardParams): unknown {
   const { scenarioName, vertical, useCase, customerName, documentName } = params;
   const q = esc(scenarioName);
-  // Base prefix used by every tile query: scenario filter only.
-  // Dashboard variables are declared for discoverability but NOT auto-applied
-  // to base — Dynatrace's `["*"]` wildcard does not expand inside `in()`, so
-  // forcing the filter into every query zero-outs results until the user
-  // narrows the dropdown.
+  // Base prefix: scenario filter only — no variable filters.
   const base = `fetch logs | filter scenario.name == "${q}"`;
   const ucKey = `${vertical}/${useCase}`;
-  const kpiDefs = getKPIs(base, ucKey);
+  // Universal business-outcome KPIs prepended to every Executive Summary so
+  // the row is always populated regardless of vertical-specific event mix.
+  const universalKpis: TileDef[] = [
+    { title: "Total Events", dql: `${base} | summarize count = count()` },
+    { title: "Error Rate (%)", dql: `${base} | summarize total = count(), errs = countIf(log.level == "ERROR") | fieldsAdd rate = toDouble(errs) / toDouble(total) * 100` },
+  ];
+  const kpiDefs = [...universalKpis, ...getKPIs(base, ucKey)];
   const chartDefs = getCharts(base, ucKey);
   const palette = paletteFor(vertical);
 
@@ -1057,73 +1111,83 @@ function buildDashboardContent(params: DashboardParams): unknown {
   const verticalLabel = vertical.charAt(0).toUpperCase() + vertical.slice(1);
   const useCaseLabel = useCase.split("_").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
 
-  // Header banner
+  // ── Top-left column (x:0-6, y:0-9): title (top) + logo placeholder (below) ──
   const meta = `**Scenario:** \`${scenarioName}\` &nbsp;·&nbsp; **Vertical:** ${verticalLabel} &nbsp;·&nbsp; **Use Case:** ${useCaseLabel}${customerName ? ` &nbsp;·&nbsp; **Customer:** ${customerName}` : ""}`;
   place(
-    md(`# ${documentName}\n${meta}\n\nReal-time KPI monitoring for **${verticalLabel} / ${useCaseLabel}** — generated by LaunchLog.`),
-    0, 0, 24, 3,
+    md(`# ${documentName}\n\n${meta}\n\nReal-time KPI monitoring for **${verticalLabel} / ${useCaseLabel}** — generated by LaunchLog.`),
+    0, 0, 6, 4,
   );
-
-  // ── Overview section ──
-  place(sectionTile("Executive Summary", "AnalyticsIcon", palette[0]), 0, 3, 24, 1);
-
-  kpiDefs.forEach(({ title, dql }, i) => {
-    place(kpiTile(title, dql), i * 6, 4, 6, 4);
-  });
-
-  // ── Activity Trends section ──
-  place(sectionTile("Activity Trends", "GlobeIcon", palette[1]), 0, 8, 24, 1);
-
-  // Event volume area chart (left) + geo/breakdown tile (right).
-  // Map only renders for verticals with meaningful physical footprint
-  // (retail / telco / logistics / energy / automotive / pos / airlines / iot).
-  // Other verticals get an event-subtype breakdown instead.
   place(
-    chartTile("Event Volume Over Time", `${base} | makeTimeseries count = count()`, "areaChart", palette),
-    0, 9, 12, 7,
+    md(
+      `### 🖼️ Logo\n\n_Replace this markdown with your customer logo:_\n\n\`\`\`md\n![](https://your-cdn/logo.png)\n\`\`\``,
+    ),
+    0, 4, 6, 5,
   );
-  if (GEO_RELEVANT.has(vertical)) {
-    // Geo bubbleMap — flat field names so the viz auto-detects lat/lon and
-    // avoids dotted-identifier issues in `by:{...}` / `fields`.
-    place(
-      chartTile(
-        "Geo Distribution",
-        `${base}
+
+  // ── Top-right column (x:6-24, y:0-9): geo section header + map ──
+  place(sectionTile("Geographic Footprint", "GlobeIcon", palette[1]), 6, 0, 18, 1);
+  place(
+    chartTile(
+      "Event Volume by Location",
+      `${base}
 | filter isNotNull(geo.lat)
 | fieldsRename latitude = geo.lat, longitude = geo.lon, city = geo.city, country = geo.country, region = geo.region
 | summarize count = count(), by:{city, country, region, latitude, longitude}
 | fields latitude, longitude, city, country, region, count`,
-        "bubbleMap",
-        palette,
-      ),
-      12, 9, 12, 7,
-    );
-  } else {
-    place(
-      chartTile(
-        "Event Mix Over Time",
-        `${base} | makeTimeseries count = count(), by:{event.type}`,
-        "lineChart",
-        palette,
-      ),
-      12, 9, 12, 7,
-    );
-  }
+      "bubbleMap",
+      palette,
+    ),
+    6, 1, 18, 8,
+  );
 
-  // ── Breakdown section ──
-  place(sectionTile("Breakdown", "AnalyticsIcon", palette[2]), 0, 16, 24, 1);
+  // ── Executive Summary section (full width starting at y:9) ──
+  place(sectionTile("Executive Summary", "AnalyticsIcon", palette[0]), 0, 9, 24, 1);
 
-  // 4 vertical-specific charts in 2×2
-  chartDefs.forEach(({ title, dql, viz }, i) => {
-    const col = (i % 2) * 12;
-    const row = 17 + Math.floor(i / 2) * 7;
-    place(chartTile(title, dql, viz ?? "lineChart", palette), col, row, 12, 7);
+  // 6 KPI tiles in a row — each w:4, h:4. Universal (Total Events, Error Rate)
+  // first, then 4 use-case specific. Force accents on the first two so the
+  // Executive Summary row always shows colored tiles (Total Events gets a
+  // flat brand accent; Error Rate already has lower-good thresholds via
+  // directionFor()).
+  kpiDefs.forEach(({ title, dql }, i) => {
+    const accent = i === 0 ? palette[0] : i === 1 ? palette[1] : undefined;
+    place(kpiTile(title, dql, accent), i * 4, 10, 4, 4);
   });
 
-  const breakdownEndRow = 17 + Math.ceil(chartDefs.length / 2) * 7;
+  // ── Activity Trends section ──
+  place(sectionTile("Activity Trends", "AnalyticsIcon", palette[2]), 0, 14, 24, 1);
+
+  place(
+    chartTile("Event Volume Over Time", `${base} | makeTimeseries count = count()`, "areaChart", palette),
+    0, 15, 12, 6,
+  );
+  // Stacked bars across business.category — barChart in Gen-3 requires
+  // makeTimeseries (no `summarize by:{}` here) and explicit
+  // leftAxisDimensions. business.category is a uniform field set on every
+  // log record with 5-7 per-use-case categories, so the mix is always
+  // diverse regardless of which pack branch ran.
+  place(
+    chartTile(
+      "Event Mix Over Time",
+      `${base} | makeTimeseries count = count(), by:{business.category}, bins:20`,
+      "barChart",
+      palette,
+    ),
+    12, 15, 12, 6,
+  );
+
+  // ── Breakdown section (use-case specific 2×2) ──
+  place(sectionTile("Breakdown", "AnalyticsIcon", palette[3]), 0, 21, 24, 1);
+
+  chartDefs.forEach(({ title, dql, viz }, i) => {
+    const col = (i % 2) * 12;
+    const row = 22 + Math.floor(i / 2) * 6;
+    place(chartTile(title, dql, viz ?? "lineChart", palette), col, row, 12, 6);
+  });
+
+  const breakdownEndRow = 22 + Math.ceil(chartDefs.length / 2) * 6;
 
   // ── Log Health section ──
-  place(sectionTile("Log Health", "AlertIcon", palette[3]), 0, breakdownEndRow, 24, 1);
+  place(sectionTile("Log Health", "AlertIcon", palette[4] ?? palette[0]), 0, breakdownEndRow, 24, 1);
 
   place(
     chartTile(
@@ -1141,7 +1205,17 @@ function buildDashboardContent(params: DashboardParams): unknown {
       "categoricalBarChart",
       palette,
     ),
-    8, breakdownEndRow + 1, 16, 6,
+    8, breakdownEndRow + 1, 8, 6,
+  );
+  // Honeycomb — service health at a glance, many small cells
+  place(
+    chartTile(
+      "Service Health Honeycomb",
+      `${base} | summarize count = count(), by:{service.name} | sort count desc | limit 60`,
+      "honeycomb",
+      palette,
+    ),
+    16, breakdownEndRow + 1, 8, 6,
   );
 
   return {
