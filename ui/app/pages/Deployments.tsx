@@ -11,6 +11,9 @@ import {
   workflowsClient,
   workflowUrl,
   dashboardUrl,
+  pauseWorkflow,
+  resumeWorkflow,
+  deleteWorkflow,
 } from "../lib/dtClients";
 
 interface ParsedMeta {
@@ -215,26 +218,40 @@ export const Deployments: React.FC = () => {
   }, [load]);
 
   const handlePause = async (row: DeploymentRow) => {
-    // The automation:workflows:write scope is restricted to Dynatrace-provided
-    // apps, so we cannot toggle the schedule from inside this app. Open the
-    // workflow in the Automation app where the user can pause it with their
-    // own tenant permissions, then optimistically reflect the intent locally.
-    window.open(workflowUrl(row.id), "_blank", "noopener,noreferrer");
-    setRows((prev) => prev?.map((r) => (r.id === row.id ? { ...r, isActive: false } : r)) ?? prev);
+    setBusyId(row.id);
+    try {
+      await pauseWorkflow(row.id);
+      setRows((prev) => prev?.map((r) => (r.id === row.id ? { ...r, isActive: false } : r)) ?? prev);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const handleResume = async (row: DeploymentRow) => {
-    window.open(workflowUrl(row.id), "_blank", "noopener,noreferrer");
-    setRows((prev) => prev?.map((r) => (r.id === row.id ? { ...r, isActive: true } : r)) ?? prev);
+    setBusyId(row.id);
+    try {
+      await resumeWorkflow(row.id);
+      setRows((prev) => prev?.map((r) => (r.id === row.id ? { ...r, isActive: true } : r)) ?? prev);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const handleDelete = async (row: DeploymentRow) => {
-    // Same scope restriction — open the workflow page where the user can
-    // delete it natively; remove the row from our local list once they
-    // confirm the navigation.
-    window.open(workflowUrl(row.id), "_blank", "noopener,noreferrer");
-    setRows((prev) => prev?.filter((r) => r.id !== row.id) ?? prev);
-    setConfirmDelete(null);
+    setBusyId(row.id);
+    try {
+      await deleteWorkflow(row.id);
+      setRows((prev) => prev?.filter((r) => r.id !== row.id) ?? prev);
+      setConfirmDelete(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
   };
 
   return (

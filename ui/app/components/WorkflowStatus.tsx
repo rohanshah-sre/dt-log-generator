@@ -4,7 +4,7 @@ import { Heading, Paragraph, Text } from "@dynatrace/strato-components/typograph
 import { Button } from "@dynatrace/strato-components/buttons";
 import { COLORS, FONTS } from "../styles/theme";
 import { useWizard } from "../lib/wizardContext";
-import { workflowUrl, dashboardUrl } from "../lib/dtClients";
+import { workflowsClient, workflowUrl, dashboardUrl } from "../lib/dtClients";
 
 const CopyChip: React.FC<{ value: string }> = ({ value }) => {
   const [copied, setCopied] = useState(false);
@@ -46,13 +46,21 @@ export const WorkflowStatus: React.FC = () => {
 
   const stopWorkflow = async () => {
     if (!r.workflowId) return;
-    // The automation:workflows:write scope is restricted to Dynatrace-provided
-    // apps, so we open the workflow in the Automation app where the user can
-    // pause / stop it natively with their own tenant permissions.
     setStopping(true);
     setStopErr(null);
     try {
-      window.open(workflowUrl(r.workflowId), "_blank", "noopener,noreferrer");
+      await workflowsClient.updateWorkflow({
+        id: r.workflowId,
+        body: {
+          trigger: {
+            schedule: {
+              isActive: false,
+              trigger: { type: "cron", cron: "*/1 * * * *" },
+              timezone: "UTC",
+            },
+          },
+        },
+      });
       setStopped(true);
     } catch (err) {
       setStopErr(err instanceof Error ? err.message : String(err));
