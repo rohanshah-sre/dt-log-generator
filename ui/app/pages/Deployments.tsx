@@ -7,7 +7,7 @@ import { Button } from "@dynatrace/strato-components/buttons";
 import type { Workflow } from "@dynatrace-sdk/client-automation";
 
 import { COLORS, FONTS } from "../styles/theme";
-import { workflowsClient, workflowUrl, dashboardUrl } from "../lib/dtClients";
+import { workflowsClient, documentsClient, workflowUrl, dashboardUrl } from "../lib/dtClients";
 
 interface ParsedMeta {
   vertical?: string;
@@ -121,8 +121,25 @@ export const Deployments: React.FC = () => {
     try {
       // Title prefix filter not directly supported as exact match, but `search`
       // does substring matching across title/description/owner.
-      const resp = await workflowsClient.getWorkflows({ search: "LaunchLog", limit: 200 });
-      const list: Workflow[] = resp.results ?? [];
+      // Fetch workflows and LaunchLog dashboards in parallel; we join them by
+      // scenario name because the intent-based deploy strips the workflow
+      // description (where we used to embed documentId) before saving.
+      const [wfResp, docResp] = await Promise.all([
+        workflowsClient.getWorkflows({ search: "LaunchLog", limit: 200 }),
+        documentsClient.listDocuments({
+          filter: "type == 'dashboard' and name starts-with '[LaunchLog]'",
+          pageSize: 200,
+        }).catch(() => ({ documents: [] as Array<{ id: string; name: string }> })),
+      ]);
+      const list: Workflow[] = wfResp.results ?? [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const docs = ((docResp as any).documents ?? []) as Array<{ id: string; name: string }>;
+      const dashByScenario = new Map<string, string>();
+      for (const d of docs) {
+        // Stored as `[LaunchLog] {scenarioName}`. Strip the prefix and map.
+        const stripped = d.name.startsWith(TITLE_PREFIX) ? d.name.slice(TITLE_PREFIX.length).trim() : d.name;
+        if (stripped) dashByScenario.set(stripped, d.id);
+      }
       const mapped: DeploymentRow[] = list
         .filter((wf) => wf.title.startsWith(TITLE_PREFIX))
         .map((wf) => {
@@ -132,11 +149,17 @@ export const Deployments: React.FC = () => {
           // Execution shape varies by trigger type; pull what we recognise.
           const exec = wf.lastExecution as { startedAt?: string; scheduledAt?: string; state?: string } | null | undefined;
           const modTime = wf.modificationInfo?.lastModifiedTime ?? wf.modificationInfo?.createdTime;
+          const scenarioName = meta.scenario ?? stripPrefix(wf.title);
+          // Prefer the documentId embedded in the description (legacy
+          // workflows created via SDK), fall back to the dashboard whose
+          // name matches `[LaunchLog] {scenarioName}` (intent-created
+          // workflows where description was stripped by the platform).
+          const documentId = meta.documentId ?? dashByScenario.get(scenarioName);
           return {
             id: wf.id,
             title: wf.title,
-            scenarioName: meta.scenario ?? stripPrefix(wf.title),
-            meta,
+            scenarioName,
+            meta: { ...meta, documentId },
             isActive,
             lastExecution: exec?.startedAt ?? exec?.scheduledAt,
             lastExecutionState: exec?.state,
