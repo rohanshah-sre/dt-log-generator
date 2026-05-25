@@ -33,6 +33,9 @@ export interface WizardState {
 export interface DeployResult {
   workflowId?: string;
   workflowTitle?: string;
+  /** True when the workflow was launched via intent and must be saved by the
+   *  user in the Automation app — we don't get a real workflow id back. */
+  workflowPending?: boolean;
   dashboardId?: string;
   dashboardName?: string;
   error?: string;

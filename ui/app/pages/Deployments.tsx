@@ -7,14 +7,7 @@ import { Button } from "@dynatrace/strato-components/buttons";
 import type { Workflow } from "@dynatrace-sdk/client-automation";
 
 import { COLORS, FONTS } from "../styles/theme";
-import {
-  workflowsClient,
-  workflowUrl,
-  dashboardUrl,
-  pauseWorkflow,
-  resumeWorkflow,
-  deleteWorkflow,
-} from "../lib/dtClients";
+import { workflowsClient, workflowUrl, dashboardUrl } from "../lib/dtClients";
 
 interface ParsedMeta {
   vertical?: string;
@@ -119,64 +112,9 @@ const SkeletonCard: React.FC = () => (
   </div>
 );
 
-const ConfirmDialog: React.FC<{
-  open: boolean;
-  scenarioName: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-  busy: boolean;
-}> = ({ open, scenarioName, onCancel, onConfirm, busy }) => {
-  if (!open) return null;
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.55)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 100,
-      }}
-    >
-      <div
-        style={{
-          background: "#1A1A2E",
-          border: `1px solid ${COLORS.cardBorder}`,
-          borderRadius: 12,
-          padding: 24,
-          width: 460,
-          maxWidth: "90vw",
-          boxShadow: `0 8px 40px ${COLORS.pink}30`,
-        }}
-      >
-        <Heading level={3} style={{ color: COLORS.title, marginBottom: 8 }}>
-          Delete deployment?
-        </Heading>
-        <Paragraph style={{ color: COLORS.label, marginBottom: 20 }}>
-          This will permanently delete the workflow <Text style={{ color: COLORS.title, fontWeight: 600 }}>{scenarioName}</Text>.
-          The associated dashboard will remain in your tenant. This action cannot be undone.
-        </Paragraph>
-        <Flex justifyContent="flex-end" gap={8}>
-          <Button onClick={onCancel} disabled={busy}>Cancel</Button>
-          <Button
-            onClick={onConfirm}
-            disabled={busy}
-            style={{ background: COLORS.pink, color: COLORS.bg, fontWeight: 700 }}
-          >
-            {busy ? "Deleting…" : "Delete"}
-          </Button>
-        </Flex>
-      </div>
-    </div>
-  );
-};
-
 export const Deployments: React.FC = () => {
   const [rows, setRows] = useState<DeploymentRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<DeploymentRow | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -217,43 +155,6 @@ export const Deployments: React.FC = () => {
     void load();
   }, [load]);
 
-  const handlePause = async (row: DeploymentRow) => {
-    setBusyId(row.id);
-    try {
-      await pauseWorkflow(row.id);
-      setRows((prev) => prev?.map((r) => (r.id === row.id ? { ...r, isActive: false } : r)) ?? prev);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const handleResume = async (row: DeploymentRow) => {
-    setBusyId(row.id);
-    try {
-      await resumeWorkflow(row.id);
-      setRows((prev) => prev?.map((r) => (r.id === row.id ? { ...r, isActive: true } : r)) ?? prev);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const handleDelete = async (row: DeploymentRow) => {
-    setBusyId(row.id);
-    try {
-      await deleteWorkflow(row.id);
-      setRows((prev) => prev?.filter((r) => r.id !== row.id) ?? prev);
-      setConfirmDelete(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   return (
     <div
       style={{
@@ -277,8 +178,9 @@ export const Deployments: React.FC = () => {
               📋 My Deployments
             </Heading>
             <Paragraph style={{ color: COLORS.label, maxWidth: 720 }}>
-              Every active LaunchLog scenario in your tenant. Pause to stop ingestion temporarily,
-              resume to bring it back, or delete it when the demo is done.
+              Every active LaunchLog scenario in your tenant. Use <b>Manage in Automation</b> to
+              pause, resume, or delete a deployment — those actions run with your own tenant
+              permissions inside the Automation app.
             </Paragraph>
           </div>
           <Flex gap={8}>
@@ -354,7 +256,6 @@ export const Deployments: React.FC = () => {
             <Grid gridTemplateColumns="repeat(auto-fill, minmax(360px, 1fr))" gap={20}>
               {rows.map((row) => {
                 const wfHref = workflowUrl(row.id);
-                const busy = busyId === row.id;
                 return (
                   <div
                     key={row.id}
@@ -414,41 +315,21 @@ export const Deployments: React.FC = () => {
                     </div>
 
                     <Flex gap={8} flexWrap="wrap">
-                      {row.isActive ? (
-                        <Button
-                          onClick={() => void handlePause(row)}
-                          disabled={busy}
-                          style={{ background: COLORS.muted, color: COLORS.bg, fontWeight: 600 }}
-                        >
-                          ⏸ Pause
-                        </Button>
-                      ) : (
-                        <Button
-                          onClick={() => void handleResume(row)}
-                          disabled={busy}
-                          style={{ background: COLORS.green, color: COLORS.bg, fontWeight: 600 }}
-                        >
-                          ▶ Resume
-                        </Button>
-                      )}
                       <a
                         href={wfHref}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{
-                          background: "transparent",
-                          color: COLORS.label,
-                          border: `1px solid ${COLORS.cardBorder}`,
+                          background: COLORS.blue,
+                          color: COLORS.title,
                           padding: "8px 14px",
                           borderRadius: 8,
                           textDecoration: "none",
-                          fontWeight: 500,
+                          fontWeight: 600,
                           fontSize: 13,
-                          display: "inline-flex",
-                          alignItems: "center",
                         }}
                       >
-                        ↗ Workflow
+                        Manage in Automation →
                       </a>
                       {row.meta.documentId && (
                         <a
@@ -471,18 +352,6 @@ export const Deployments: React.FC = () => {
                           📊 Dashboard
                         </a>
                       )}
-                      <Button
-                        onClick={() => setConfirmDelete(row)}
-                        disabled={busy}
-                        style={{
-                          background: "transparent",
-                          color: COLORS.pink,
-                          border: `1px solid ${COLORS.pink}80`,
-                          fontWeight: 600,
-                        }}
-                      >
-                        🗑 Delete
-                      </Button>
                     </Flex>
                   </div>
                 );
@@ -491,14 +360,6 @@ export const Deployments: React.FC = () => {
           )}
         </div>
       </div>
-
-      <ConfirmDialog
-        open={confirmDelete !== null}
-        scenarioName={confirmDelete?.scenarioName ?? ""}
-        busy={busyId === confirmDelete?.id}
-        onCancel={() => setConfirmDelete(null)}
-        onConfirm={() => confirmDelete && void handleDelete(confirmDelete)}
-      />
     </div>
   );
 };

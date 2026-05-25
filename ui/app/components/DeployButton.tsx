@@ -1,4 +1,5 @@
 import React from "react";
+import { sendIntent } from "@dynatrace-sdk/navigation";
 import { COLORS } from "../styles/theme";
 import { Flex } from "@dynatrace/strato-components/layouts";
 import { Text } from "@dynatrace/strato-components/typography";
@@ -7,7 +8,7 @@ import { findVertical, findUseCase } from "../lib/verticals";
 import { buildWorkflowDescriptor } from "../lib/workflowBuilder";
 import { buildDashboard } from "../lib/dashboardBuilder";
 import { buildHostPool, pickServices } from "../lib/logGenerator";
-import { workflowsClient, documentsClient } from "../lib/dtClients";
+import { documentsClient } from "../lib/dtClients";
 
 const Spinner = () => (
   <span
@@ -69,16 +70,23 @@ export const DeployButton: React.FC = () => {
       const docId = docResp.id;
 
       const wfDescriptor = buildWorkflowDescriptor(cfg, docId);
-      const wfResp = await workflowsClient.createWorkflow({
+
+      // Dispatch a "create workflow" intent to the Automation app. This works
+      // for third-party apps (no `automation:workflows:write` scope required)
+      // because the workflow is ultimately created by the user inside the
+      // Automation app, under their own tenant permissions. The intent payload
+      // pre-fills the workflow editor with our title, tasks, and trigger.
+      // See: https://developer.dynatrace.com/develop/guides/workflows/use-intents/
+      sendIntent({
+        title: wfDescriptor.title,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        body: wfDescriptor as any,
+        tasks: (wfDescriptor as any).tasks,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        trigger: (wfDescriptor as any).trigger,
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const wfId = (wfResp as any)?.id ?? "unknown";
-
       w.setDeployResult({
-        workflowId: wfId,
+        workflowPending: true,
         workflowTitle: wfDescriptor.title,
         dashboardId: docId,
         dashboardName: documentName,

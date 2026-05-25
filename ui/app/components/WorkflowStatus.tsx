@@ -4,7 +4,7 @@ import { Heading, Paragraph, Text } from "@dynatrace/strato-components/typograph
 import { Button } from "@dynatrace/strato-components/buttons";
 import { COLORS, FONTS } from "../styles/theme";
 import { useWizard } from "../lib/wizardContext";
-import { workflowsClient, workflowUrl, dashboardUrl } from "../lib/dtClients";
+import { workflowUrl, dashboardUrl, automationWorkflowsUrl } from "../lib/dtClients";
 
 const CopyChip: React.FC<{ value: string }> = ({ value }) => {
   const [copied, setCopied] = useState(false);
@@ -38,38 +38,11 @@ const CopyChip: React.FC<{ value: string }> = ({ value }) => {
 export const WorkflowStatus: React.FC = () => {
   const w = useWizard();
   const r = w.deployResult;
-  const [stopping, setStopping] = useState(false);
-  const [stopped, setStopped] = useState(false);
-  const [stopErr, setStopErr] = useState<string | null>(null);
 
   if (!r || w.deployState !== "success") return null;
 
-  const stopWorkflow = async () => {
-    if (!r.workflowId) return;
-    setStopping(true);
-    setStopErr(null);
-    try {
-      await workflowsClient.updateWorkflow({
-        id: r.workflowId,
-        body: {
-          trigger: {
-            schedule: {
-              isActive: false,
-              trigger: { type: "cron", cron: "*/1 * * * *" },
-              timezone: "UTC",
-            },
-          },
-        },
-      });
-      setStopped(true);
-    } catch (err) {
-      setStopErr(err instanceof Error ? err.message : String(err));
-    } finally {
-      setStopping(false);
-    }
-  };
-
-  const wfLink = r.workflowId ? workflowUrl(r.workflowId) : "";
+  const pending = !!r.workflowPending;
+  const wfLink = r.workflowId ? workflowUrl(r.workflowId) : automationWorkflowsUrl();
   const dbLink = r.dashboardId ? dashboardUrl(r.dashboardId) : "";
 
   return (
@@ -84,10 +57,12 @@ export const WorkflowStatus: React.FC = () => {
         }}
       >
         <Heading level={3} style={{ color: COLORS.greenBright, marginBottom: 6 }}>
-          ✓ Scenario deployed
+          {pending ? "✓ Dashboard deployed — one step left" : "✓ Scenario deployed"}
         </Heading>
         <Paragraph style={{ color: COLORS.label }}>
-          The workflow is ingesting logs every minute and a business dashboard is ready with 2 hours of backfilled data.
+          {pending
+            ? "Your business dashboard is live with 2 hours of backfilled data. The Automation app should have opened in a new tab with your workflow pre-filled — click Save there to start the live log feed."
+            : "The workflow is ingesting logs every minute and a business dashboard is ready with 2 hours of backfilled data."}
         </Paragraph>
       </div>
 
@@ -110,12 +85,18 @@ export const WorkflowStatus: React.FC = () => {
             Workflow
           </Text>
           <div style={{ color: COLORS.title, fontWeight: 600, marginTop: 6 }}>{r.workflowTitle}</div>
-          <Flex gap={8} alignItems="center" paddingTop={8}>
-            <Text style={{ color: COLORS.label, fontSize: 12, fontFamily: FONTS.mono }}>
-              {r.workflowId}
-            </Text>
-            <CopyChip value={r.workflowId ?? ""} />
-          </Flex>
+          {pending ? (
+            <Paragraph style={{ color: COLORS.label, fontSize: 12, marginTop: 8 }}>
+              The workflow editor was opened with this scenario pre-filled. Review the tasks and click <b>Save</b> in the Automation app.
+            </Paragraph>
+          ) : (
+            <Flex gap={8} alignItems="center" paddingTop={8}>
+              <Text style={{ color: COLORS.label, fontSize: 12, fontFamily: FONTS.mono }}>
+                {r.workflowId}
+              </Text>
+              <CopyChip value={r.workflowId ?? ""} />
+            </Flex>
+          )}
           <Flex gap={8} paddingTop={12}>
             <a
               href={wfLink}
@@ -131,17 +112,9 @@ export const WorkflowStatus: React.FC = () => {
                 fontSize: 13,
               }}
             >
-              Open in Automation →
+              {pending ? "Open Automation →" : "Manage in Automation →"}
             </a>
-            <Button
-              onClick={stopWorkflow}
-              disabled={stopping || stopped}
-              style={{ background: stopped ? COLORS.muted : COLORS.pink, color: COLORS.bg, fontWeight: 700 }}
-            >
-              {stopped ? "Stopped" : stopping ? "Stopping…" : "Stop workflow"}
-            </Button>
           </Flex>
-          {stopErr && <Text style={{ color: COLORS.pink, fontSize: 12, marginTop: 8 }}>{stopErr}</Text>}
         </div>
 
         {r.dashboardId && (

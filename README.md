@@ -11,12 +11,14 @@ The demo story: *"Here's what Dynatrace surfaces from your logs the moment you c
 ## What It Does
 
 1. You select an industry vertical and a specific business use case
-2. LaunchLog deploys an **Automation Workflow** to your tenant
-3. The workflow runs every minute, injecting structured log events into Grail in batches of up to 500
-4. On first run, the workflow backfills **3 hours of historical data** so dashboards populate immediately
-5. Logs include business-context fields (transaction amounts, fraud scores, flight delays, OEE scores, etc.) plus geographic coordinates for map visualisations
-6. A **Gen-3 Dynatrace Dashboard** is created automatically via the Documents API — a direct link is provided post-deploy
+2. LaunchLog creates a **Gen-3 Dynatrace Dashboard** in your tenant via the Documents API
+3. LaunchLog then opens the **Automation** app via an intent, pre-filled with the matching workflow definition — you click **Save** there to start it
+4. Once saved, the workflow runs every minute, injecting structured log events into Grail in batches of up to 500
+5. On first run, the workflow backfills **3 hours of historical data** so dashboards populate immediately
+6. Logs include business-context fields (transaction amounts, fraud scores, flight delays, OEE scores, etc.) plus geographic coordinates for map visualisations
 7. You walk the prospect through live DQL queries that surface real business insights from those logs
+
+> **Why the extra Save click?** The `automation:workflows:write` scope is reserved by Dynatrace for first-party apps. LaunchLog ships the workflow as a [navigation intent](https://developer.dynatrace.com/develop/guides/workflows/use-intents/) so it can be created under your own tenant permissions — no elevated app scope required.
 
 ---
 
@@ -127,15 +129,16 @@ Set `environmentUrl` to your tenant URL:
 The app ID is `my.launchlog`. Required scopes are already declared in `app.config.json`:
 
 ```
-automation:workflows:read
-automation:workflows:write
-automation:workflows:run
-storage:logs:write
-storage:logs:read
-environment-api:entities:read
-document:documents:write
-document:documents:read
+automation:workflows:read       # list deployed scenarios
+automation:workflows:run        # run on demand from the wizard
+storage:logs:write              # ingest generated logs into Grail
+storage:logs:read               # read back ingested logs for DQL
+environment-api:entities:read   # resolve host / service entities
+document:documents:write        # create the dashboard
+document:documents:read         # read back created dashboards
 ```
+
+> `automation:workflows:write` is **not** required — workflows are created via a navigation intent in the Automation app under the user's own permissions.
 
 ### 2. Install Dependencies
 
@@ -169,10 +172,10 @@ https://{your-tenant}.apps.dynatrace.com/ui/apps/my.launchlog
 1. Open LaunchLog in your tenant
 2. Pick a vertical, use case, and volume (Light / Medium / Heavy)
 3. Enter a customer/company name and scenario label
-4. Click **Deploy** — the workflow is created and a dashboard is generated immediately
-5. The first workflow execution backfills **3 hours of historical log data** automatically
-6. After 1–2 minutes, click the dashboard link on the Deployments tab to see live data
-7. Use the **Deployments** tab to manage active scenarios — each entry links directly to the workflow and dashboard
+4. Click **Deploy** — the dashboard is created immediately, and the Automation app opens in a new tab with the workflow pre-filled
+5. In the Automation app, click **Save** to start the workflow. The first execution backfills **3 hours of historical log data** automatically
+6. After 1–2 minutes, open the dashboard link from the **Deployments** tab to see live data
+7. The **Deployments** tab is a read-only registry of every `[LaunchLog]` workflow in your tenant. Click **Manage in Automation →** on any row to pause, resume, or delete it natively
 
 Workflows are named `[LaunchLog] {Customer} — {Use Case}` and appear in **Automation → Workflows**. They run every minute (`*/1 * * * *`).
 
@@ -191,8 +194,8 @@ Workflows are named `[LaunchLog] {Customer} — {Use Case}` and appear in **Auto
 ## Cleanup
 
 **Stop a specific scenario:**
-- Open the Deployments tab → **Delete**, or
-- Go to **Automation → Workflows**, find the `[LaunchLog]` workflow and deactivate / delete it
+- Open the **Deployments** tab, find the scenario, click **Manage in Automation →**, then deactivate or delete the workflow from there
+- Or go directly to **Automation → Workflows**, find the `[LaunchLog]` workflow and deactivate / delete it
 
 **Remove generated logs:**
 - Logs expire per your Grail bucket retention policy (default 35 days)
@@ -216,7 +219,8 @@ Workflows are named `[LaunchLog] {Customer} — {Use Case}` and appear in **Auto
 ## Tech Stack
 
 - **Dynatrace App Engine** — React + TypeScript, `dt-app 1.8.x` toolkit
-- **@dynatrace-sdk/client-automation** — workflow CRUD and execution
+- **@dynatrace-sdk/navigation** — dispatches the "create workflow" intent to the Automation app
+- **@dynatrace-sdk/client-automation** — read-only workflow listing for the Deployments page
 - **@dynatrace-sdk/client-document** — Gen-3 dashboard creation via Documents API
 - **@dynatrace-sdk/client-grail-metrics-ingest** (via `logsClient.storeLog`) — structured log ingest
 - **@dynatrace/strato-components-preview** — Dynatrace Strato design system components

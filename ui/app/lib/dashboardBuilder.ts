@@ -69,6 +69,15 @@ function recordFieldOf(dql: string): string {
       const assigns = [...seg.matchAll(/([a-zA-Z_][\w.]*)\s*=/g)];
       if (assigns.length > 0) return assigns[assigns.length - 1][1];
     }
+    if (/^makeTimeseries\s+/i.test(seg)) {
+      // Strip the `by:{...}` clause before scanning aliases so dimensions
+      // like `line.id` aren't mistaken for value-column names.
+      const withoutBy = seg.replace(/\bby\s*:\s*\{[^}]*\}/i, "");
+      // Also strip bins / filter / time arguments that take `key: value` form.
+      const withoutKwargs = withoutBy.replace(/\b\w+\s*:\s*\d+/g, "");
+      const assigns = [...withoutKwargs.matchAll(/([a-zA-Z_][\w.]*)\s*=/g)];
+      if (assigns.length > 0) return assigns[assigns.length - 1][1];
+    }
   }
   return "count";
 }
