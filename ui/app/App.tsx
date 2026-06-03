@@ -1,4 +1,5 @@
-import { Page } from "@dynatrace/strato-components-preview/layouts";
+import { Page } from "@dynatrace/strato-components/layouts";
+import { ToastContainer } from "@dynatrace/strato-components/notifications";
 import React from "react";
 import { Route, Routes } from "react-router-dom";
 import { Data } from "./pages/Data";
@@ -10,6 +11,7 @@ import { WizardProvider } from "./lib/wizardContext";
 export const App = () => {
   return (
     <WizardProvider>
+      <ToastContainer />
       <Page>
         <Page.Header>
           <Header />

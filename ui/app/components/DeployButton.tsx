@@ -1,30 +1,14 @@
 import React from "react";
 import { sendIntent } from "@dynatrace-sdk/navigation";
-import { COLORS } from "../styles/theme";
 import { Flex } from "@dynatrace/strato-components/layouts";
-import { Text } from "@dynatrace/strato-components/typography";
+import { Button } from "@dynatrace/strato-components/buttons";
+import { showToast } from "@dynatrace/strato-components/notifications";
 import { useWizard, VOLUME_TO_LPM, ERROR_RATE_TO_PCT } from "../lib/wizardContext";
 import { findVertical, findUseCase } from "../lib/verticals";
 import { buildWorkflowDescriptor } from "../lib/workflowBuilder";
 import { buildDashboard } from "../lib/dashboardBuilder";
 import { buildHostPool, pickServices } from "../lib/logGenerator";
 import { documentsClient } from "../lib/dtClients";
-
-const Spinner = () => (
-  <span
-    style={{
-      display: "inline-block",
-      width: 14,
-      height: 14,
-      border: `2px solid ${COLORS.bg}`,
-      borderTopColor: "transparent",
-      borderRadius: "50%",
-      animation: "logspin 0.7s linear infinite",
-      marginRight: 8,
-      verticalAlign: "middle",
-    }}
-  />
-);
 
 export const DeployButton: React.FC = () => {
   const w = useWizard();
@@ -71,12 +55,6 @@ export const DeployButton: React.FC = () => {
 
       const wfDescriptor = buildWorkflowDescriptor(cfg, docId);
 
-      // Dispatch a "create workflow" intent to the Automation app. This works
-      // for third-party apps (no `automation:workflows:write` scope required)
-      // because the workflow is ultimately created by the user inside the
-      // Automation app, under their own tenant permissions. The intent payload
-      // pre-fills the workflow editor with our title, tasks, and trigger.
-      // See: https://developer.dynatrace.com/develop/guides/workflows/use-intents/
       sendIntent({
         title: wfDescriptor.title,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,57 +70,49 @@ export const DeployButton: React.FC = () => {
         dashboardName: documentName,
       });
       w.setDeployState("success");
+
+      showToast({
+        type: "success",
+        title: "Dashboard deployed",
+        message: "Open the Automation tab that just opened and click Save to start the live log feed.",
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       w.setDeployResult({ error: msg });
       w.setDeployState("error");
+      showToast({
+        type: "critical",
+        title: "Deploy failed",
+        message: msg,
+      });
     }
   };
 
   const disabled =
     !w.vertical || !w.useCase || !w.scenarioName.trim() || w.deployState === "deploying" || w.deployState === "success";
 
-  let bg: string = COLORS.green;
-  let label: React.ReactNode = "Deploy scenario";
+  let label: string;
   if (w.deployState === "deploying") {
-    bg = COLORS.green;
-    label = (<><Spinner />Deploying…</>);
+    label = "Deploying…";
   } else if (w.deployState === "success") {
-    bg = COLORS.green;
-    label = "✓ Deployed";
+    label = "Deployed";
   } else if (w.deployState === "error") {
-    bg = COLORS.pink;
     label = "Retry deploy";
+  } else {
+    label = "Deploy scenario";
   }
 
   return (
     <Flex flexDirection="column" gap={8} alignItems="flex-end">
-      <style>{`@keyframes logspin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      <button
-        onClick={handleDeploy}
+      <Button
+        variant="emphasized"
+        color={w.deployState === "error" ? "critical" : undefined}
+        onClick={() => void handleDeploy()}
         disabled={disabled}
-        style={{
-          background: bg,
-          color: COLORS.bg,
-          fontWeight: 800,
-          padding: "12px 24px",
-          borderRadius: 10,
-          border: "none",
-          fontSize: 15,
-          cursor: disabled ? "not-allowed" : "pointer",
-          opacity: disabled && w.deployState !== "deploying" ? 0.5 : 1,
-          boxShadow: w.deployState === "success" ? `0 0 18px ${COLORS.green}80` : "none",
-          transition: "all 200ms ease",
-          minWidth: 200,
-        }}
+        loading={w.deployState === "deploying"}
       >
         {label}
-      </button>
-      {w.deployState === "error" && w.deployResult?.error && (
-        <Text style={{ color: COLORS.pink, fontSize: 12, maxWidth: 360, textAlign: "right" }}>
-          {w.deployResult.error}
-        </Text>
-      )}
+      </Button>
     </Flex>
   );
 };

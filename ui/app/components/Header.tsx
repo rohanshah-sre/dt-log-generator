@@ -1,19 +1,43 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import { AppHeader } from "@dynatrace/strato-components-preview/layouts";
+import { useLocation, useNavigate } from "react-router-dom";
+import { AppHeader, TitleBar } from "@dynatrace/strato-components/layouts";
+import { Tabs, Tab } from "@dynatrace/strato-components/navigation";
+
+const ROUTES = ["/", "/deployments"];
 
 export const Header = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const selectedIndex = Math.max(
+    0,
+    ROUTES.findIndex((r) =>
+      r === "/" ? location.pathname === "/" : location.pathname.startsWith(r)
+    )
+  );
+
   return (
-    <AppHeader>
-      <AppHeader.NavItems>
-        <AppHeader.AppNavLink as={Link} to="/" />
-        <AppHeader.NavigationItem as={Link} to="/">
-          🚀 Wizard
-        </AppHeader.NavigationItem>
-        <AppHeader.NavigationItem as={Link} to="/deployments">
-          📋 My Deployments
-        </AppHeader.NavigationItem>
-      </AppHeader.NavItems>
-    </AppHeader>
+    <>
+      <AppHeader>
+        <AppHeader.Navigation>
+          <AppHeader.NavigationItem as="span">LaunchLog</AppHeader.NavigationItem>
+        </AppHeader.Navigation>
+      </AppHeader>
+      <TitleBar showDivider={false}>
+        <TitleBar.Title>LaunchLog</TitleBar.Title>
+        <TitleBar.Subtitle>
+          Business scenario log generation for live demos
+        </TitleBar.Subtitle>
+        <TitleBar.Navigation>
+          <Tabs
+            selectedIndex={selectedIndex}
+            onChange={(i) => navigate(ROUTES[i])}
+          >
+            <Tab title="Wizard">{null}</Tab>
+            <Tab title="My Deployments">{null}</Tab>
+          </Tabs>
+        </TitleBar.Navigation>
+      </TitleBar>
+    </>
   );
 };

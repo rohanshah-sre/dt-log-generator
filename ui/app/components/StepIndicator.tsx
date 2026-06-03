@@ -1,7 +1,7 @@
 import React from "react";
 import { Flex } from "@dynatrace/strato-components/layouts";
 import { Text } from "@dynatrace/strato-components/typography";
-import { COLORS } from "../styles/theme";
+import Colors from "@dynatrace/strato-design-tokens/colors";
 
 interface Props { current: 1 | 2 | 3 | 4; }
 
@@ -17,8 +17,11 @@ export const StepIndicator: React.FC<Props> = ({ current }) => (
     {STEPS.map((s, i) => {
       const active = s.n === current;
       const done = s.n < current;
-      const dotBg = active ? COLORS.green : done ? COLORS.greenBright : COLORS.cardBorder;
-      const labelColor = active ? COLORS.title : done ? COLORS.label : COLORS.muted;
+      const bg = active
+        ? Colors.Background.Container.Primary.Accent
+        : done
+        ? Colors.Background.Container.Success.Accent
+        : Colors.Background.Field.Neutral.Emphasized;
       return (
         <Flex key={s.n} alignItems="center" gap={8}>
           <div
@@ -26,21 +29,28 @@ export const StepIndicator: React.FC<Props> = ({ current }) => (
               width: 28,
               height: 28,
               borderRadius: "50%",
-              background: dotBg,
-              color: COLORS.bg,
+              background: bg,
+              color: Colors.Text.Neutral.OnAccent.Default,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontWeight: 700,
-              boxShadow: active ? `0 0 12px ${COLORS.green}80` : "none",
               transition: "all 200ms ease",
             }}
           >
             {s.n}
           </div>
-          <Text style={{ color: labelColor, fontWeight: active ? 600 : 400 }}>{s.label}</Text>
+          <Text style={{ fontWeight: active ? 600 : 400 }}>{s.label}</Text>
           {i < STEPS.length - 1 && (
-            <div style={{ width: 32, height: 2, background: done ? COLORS.greenBright : COLORS.cardBorder }} />
+            <div
+              style={{
+                width: 32,
+                height: 2,
+                background: done
+                  ? Colors.Background.Container.Success.Accent
+                  : Colors.Background.Field.Neutral.Emphasized,
+              }}
+            />
           )}
         </Flex>
       );

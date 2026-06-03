@@ -1,8 +1,8 @@
 import React from "react";
 import { Flex, Grid } from "@dynatrace/strato-components/layouts";
-import { Heading, Paragraph, Text } from "@dynatrace/strato-components/typography";
-import { Button } from "@dynatrace/strato-components/buttons";
-import { COLORS } from "../styles/theme";
+import { Heading, Paragraph } from "@dynatrace/strato-components/typography";
+import { Chip, ChipGroup } from "@dynatrace/strato-components/content";
+import { FormField, Label, TextInput, FieldSet } from "@dynatrace/strato-components/forms";
 import {
   useWizard,
   type LogVolume,
@@ -13,32 +13,37 @@ import {
   ERROR_RATE_TO_PCT,
 } from "../lib/wizardContext";
 
-const Pill: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
-  <button
-    onClick={onClick}
-    style={{
-      cursor: "pointer",
-      padding: "10px 16px",
-      borderRadius: 999,
-      border: `1px solid ${active ? COLORS.green : COLORS.cardBorder}`,
-      background: active ? `${COLORS.green}20` : "transparent",
-      color: active ? COLORS.title : COLORS.label,
-      fontWeight: active ? 600 : 400,
-      transition: "all 150ms ease",
-    }}
-  >
-    {children}
-  </button>
-);
-
-const Group: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <Flex flexDirection="column" gap={8}>
-    <Text style={{ color: COLORS.label, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>{label}</Text>
-    <Flex gap={8} flexWrap="wrap">
-      {children}
-    </Flex>
-  </Flex>
-);
+function OptionGroup<T extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { key: T; label: string }[];
+  value: T;
+  onChange: (k: T) => void;
+}) {
+  return (
+    <FieldSet>
+      <FieldSet.Legend>{label}</FieldSet.Legend>
+      <ChipGroup style={{ flexWrap: "wrap" }}>
+        {options.map((o) => (
+          <Chip
+            key={String(o.key)}
+            as="button"
+            color={value === o.key ? "primary" : "neutral"}
+            variant={value === o.key ? "accent" : "emphasized"}
+            onClick={() => onChange(o.key)}
+            style={{ fontSize: "1rem", padding: "8px 16px" }}
+          >
+            {o.label}
+          </Chip>
+        ))}
+      </ChipGroup>
+    </FieldSet>
+  );
+}
 
 export const ParameterForm: React.FC = () => {
   const w = useWizard();
@@ -60,94 +65,65 @@ export const ParameterForm: React.FC = () => {
     { key: 480, label: "8 hours" },
     { key: 1440, label: "24 hours" },
   ];
-  const services: ServiceCount[] = [3, 5, 8];
-
-  const inputStyle: React.CSSProperties = {
-    background: "transparent",
-    border: `1px solid ${COLORS.cardBorder}`,
-    borderRadius: 8,
-    padding: "10px 14px",
-    color: COLORS.title,
-    fontSize: 14,
-    width: "100%",
-    outline: "none",
-  };
+  const services: { key: ServiceCount; label: string }[] = [
+    { key: 3, label: "3 services" },
+    { key: 5, label: "5 services" },
+    { key: 8, label: "8 services" },
+  ];
 
   return (
     <Flex flexDirection="column" gap={24}>
       <div>
-        <Heading level={2} style={{ color: COLORS.title }}>
-          3. Configure parameters
-        </Heading>
-        <Paragraph style={{ color: COLORS.muted }}>
+        <Heading level={2}>3. Configure parameters</Heading>
+        <Paragraph>
           Tune log volume, error mix, and the demo runtime. The workflow scales batches automatically.
         </Paragraph>
       </div>
 
       <Grid gridTemplateColumns="1fr 1fr" gap={32}>
-        <Group label="Log volume">
-          {volumes.map((v) => (
-            <Pill key={v.key} active={w.volume === v.key} onClick={() => w.setVolume(v.key)}>
-              {v.label}
-            </Pill>
-          ))}
-        </Group>
-        <Group label="Error rate">
-          {errorRates.map((e) => (
-            <Pill key={e.key} active={w.errorRate === e.key} onClick={() => w.setErrorRate(e.key)}>
-              {e.label}
-            </Pill>
-          ))}
-        </Group>
-        <Group label="Duration">
-          {durations.map((d) => (
-            <Pill key={d.key} active={w.duration === d.key} onClick={() => w.setDuration(d.key)}>
-              {d.label}
-            </Pill>
-          ))}
-        </Group>
-        <Group label="Services">
-          {services.map((s) => (
-            <Pill key={s} active={w.serviceCount === s} onClick={() => w.setServiceCount(s)}>
-              {s} services
-            </Pill>
-          ))}
-        </Group>
+        <OptionGroup
+          label="Log volume"
+          options={volumes}
+          value={w.volume}
+          onChange={w.setVolume}
+        />
+        <OptionGroup
+          label="Error rate"
+          options={errorRates}
+          value={w.errorRate}
+          onChange={w.setErrorRate}
+        />
+        <OptionGroup
+          label="Duration"
+          options={durations}
+          value={w.duration}
+          onChange={w.setDuration}
+        />
+        <OptionGroup
+          label="Services"
+          options={services}
+          value={w.serviceCount}
+          onChange={w.setServiceCount}
+        />
       </Grid>
 
       <Grid gridTemplateColumns="1fr 1fr" gap={32}>
-        <Flex flexDirection="column" gap={6}>
-          <Text style={{ color: COLORS.label, fontSize: 13 }}>Customer name (optional)</Text>
-          <input
-            style={inputStyle}
-            type="text"
+        <FormField>
+          <Label>Customer name (optional)</Label>
+          <TextInput
             value={w.customerName}
             placeholder="e.g. Globex Insurance"
-            onChange={(e) => w.setCustomerName(e.target.value)}
+            onChange={(v) => w.setCustomerName(v)}
           />
-        </Flex>
-        <Flex flexDirection="column" gap={6}>
-          <Text style={{ color: COLORS.label, fontSize: 13 }}>Scenario name</Text>
-          <input
-            style={inputStyle}
-            type="text"
+        </FormField>
+        <FormField>
+          <Label>Scenario name</Label>
+          <TextInput
             value={w.scenarioName}
-            onChange={(e) => w.setScenarioName(e.target.value)}
+            onChange={(v) => w.setScenarioName(v)}
           />
-        </Flex>
+        </FormField>
       </Grid>
-
-      <Flex justifyContent="space-between" gap={12}>
-        <Button onClick={() => w.setStep(2)}>← Back</Button>
-        <Button
-          variant="emphasized"
-          disabled={!w.scenarioName.trim()}
-          onClick={() => w.setStep(4)}
-          style={{ background: COLORS.green, color: COLORS.bg, fontWeight: 700 }}
-        >
-          Next: preview & deploy →
-        </Button>
-      </Flex>
     </Flex>
   );
 };
