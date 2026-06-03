@@ -153,7 +153,7 @@ export const Deployments: React.FC = () => {
       header: "Actions",
       accessor: "id",
       cell: ({ rowData }: { rowData: DeploymentRow; value: string }) => (
-        <Flex gap={8}>
+        <Flex flexDirection="column" gap={8}>
           <Button
             as="a"
             href={workflowUrl(rowData.id)}

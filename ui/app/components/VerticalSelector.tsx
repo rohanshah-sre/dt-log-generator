@@ -1,7 +1,7 @@
 import React from "react";
 import { Flex } from "@dynatrace/strato-components/layouts";
 import { Heading, Paragraph } from "@dynatrace/strato-components/typography";
-import { Chip, ChipGroup } from "@dynatrace/strato-components/content";
+import { Chip } from "@dynatrace/strato-components/content";
 import { VERTICALS } from "../lib/verticals";
 import { useWizard } from "../lib/wizardContext";
 
@@ -16,7 +16,7 @@ export const VerticalSelector: React.FC = () => {
           Each vertical defines a realistic log schema, service mesh, and dashboard story. Pick the one your audience cares about.
         </Paragraph>
       </div>
-      <ChipGroup style={{ flexWrap: "wrap" }}>
+      <Flex flexWrap="wrap" gap={8}>
         {VERTICALS.map((v) => (
           <Chip
             key={v.key}
@@ -29,7 +29,7 @@ export const VerticalSelector: React.FC = () => {
             {v.icon} {v.name}
           </Chip>
         ))}
-      </ChipGroup>
+      </Flex>
     </Flex>
   );
 };
