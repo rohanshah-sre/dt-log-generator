@@ -19,6 +19,8 @@ const Section: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 export const Home: React.FC = () => {
   const w = useWizard();
 
+  const parametersReady = w.useCase !== null && w.scenarioName.trim() !== "";
+
   const useCaseRef = useRef<HTMLDivElement>(null);
   const paramsRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -31,11 +33,7 @@ export const Home: React.FC = () => {
     if (w.useCase) paramsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [w.useCase]);
 
-  useEffect(() => {
-    if (w.useCase && w.scenarioName.trim()) {
-      previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [w.useCase]); // only scroll when useCase is first set, not on every keystroke
+  const scrollToPreview = () => previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
     <div style={{ width: "80%", margin: "0 auto", padding: "32px 0 64px" }}>
@@ -88,14 +86,14 @@ export const Home: React.FC = () => {
       )}
 
       {/* Section D — Preview & deploy: appears when required parameters are filled */}
-      {w.useCase && w.scenarioName.trim() && w.deployState !== "success" && (
+      {parametersReady && w.deployState !== "success" && (
         <div ref={previewRef} style={{ marginTop: 24 }}>
           <Section>
             <Surface elevation="raised">
               <Flex flexDirection="column" gap={24} padding={24}>
                 <PreviewPanel />
                 <Flex justifyContent="flex-end">
-                  <DeployButton />
+                  <DeployButton onBeforeDeploy={scrollToPreview} />
                 </Flex>
               </Flex>
             </Surface>

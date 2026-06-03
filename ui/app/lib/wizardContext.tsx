@@ -81,7 +81,7 @@ export const WizardProvider = ({ children }: { children: React.ReactNode }) => {
     () => ({
       ...state,
       setStep: (step) => setState((s) => ({ ...s, step })),
-      setVertical: (vertical) => setState((s) => ({ ...s, vertical, useCase: null })),
+      setVertical: (vertical) => setState((s) => ({ ...s, vertical, useCase: null, scenarioName: "" })),
       setUseCase: (useCase) => setState((s) => ({ ...s, useCase })),
       setVolume: (volume) => setState((s) => ({ ...s, volume })),
       setErrorRate: (errorRate) => setState((s) => ({ ...s, errorRate })),

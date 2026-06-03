@@ -10,10 +10,11 @@ import { buildDashboard } from "../lib/dashboardBuilder";
 import { buildHostPool, pickServices } from "../lib/logGenerator";
 import { documentsClient } from "../lib/dtClients";
 
-export const DeployButton: React.FC = () => {
+export const DeployButton: React.FC<{ onBeforeDeploy?: () => void }> = ({ onBeforeDeploy }) => {
   const w = useWizard();
 
   const handleDeploy = async () => {
+    onBeforeDeploy?.();
     const vertical = findVertical(w.vertical);
     const useCase = findUseCase(vertical, w.useCase);
     if (!vertical || !useCase) return;
