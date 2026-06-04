@@ -103,7 +103,7 @@ export const Deployments: React.FC = () => {
             modifiedAt: modTime ? new Date(modTime).toISOString() : undefined,
           };
         })
-        .sort((a, b) => (b.meta.created ?? "").localeCompare(a.meta.created ?? ""));
+        .sort((a, b) => (b.meta.created ?? b.modifiedAt ?? "").localeCompare(a.meta.created ?? a.modifiedAt ?? ""));
       setRows(mapped);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -122,57 +122,85 @@ export const Deployments: React.FC = () => {
       header: "Scenario",
       accessor: "scenarioName",
       width: "2fr",
+      alignment: "left",
+      cell: ({ value }: { value: string }) => (
+        <div style={{ whiteSpace: "normal", wordBreak: "break-word", paddingLeft: 12, paddingTop: 20 }}>{value}</div>
+      ),
     },
     {
       id: "vertical",
       header: "Vertical",
       accessor: (row) => row.meta.vertical ?? "—",
+      alignment: "center",
+      cell: ({ value }: { value: string }) => (
+        <div style={{ paddingTop: 20 }}>{value}</div>
+      ),
     },
     {
       id: "usecase",
       header: "Use Case",
       accessor: (row) => row.meta.usecase ?? "—",
+      alignment: "center",
+      cell: ({ value }: { value: string }) => (
+        <div style={{ paddingTop: 20 }}>{value}</div>
+      ),
     },
     {
       id: "created",
       header: "Deployed At",
       accessor: (row) => fmtDate(row.meta.created),
+      alignment: "center",
+      cell: ({ value }: { value: string }) => (
+        <div style={{ paddingTop: 20 }}>{value}</div>
+      ),
     },
     {
       id: "status",
       header: "Status",
       accessor: (row) => (row.isActive ? "ACTIVE" : "PAUSED"),
+      alignment: "center",
       cell: ({ rowData }: { rowData: DeploymentRow; value: string }) => (
-        <HealthIndicator status={rowData.isActive ? "good" : "neutral"}>
-          {rowData.isActive ? "ACTIVE" : "PAUSED"}
-        </HealthIndicator>
+        <div style={{ paddingTop: 20, display: "flex", justifyContent: "center" }}>
+          <div style={{ display: "inline-flex", transform: "scale(3)", transformOrigin: "center" }}>
+            <HealthIndicator
+              status={rowData.isActive ? "good" : "neutral"}
+              aria-label={rowData.isActive ? "ACTIVE" : "PAUSED"}
+            />
+          </div>
+        </div>
       ),
     },
     {
       id: "actions",
       header: "Actions",
       accessor: "id",
+      alignment: "center",
       cell: ({ rowData }: { rowData: DeploymentRow; value: string }) => (
-        <Flex flexDirection="column" gap={8}>
-          <Button
-            as="a"
-            href={workflowUrl(rowData.id)}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="emphasized"
-          >
-            Automation
-          </Button>
-          {rowData.meta.documentId && (
+        <Flex flexDirection="column" gap={0} alignItems="center">
+          <div style={{ paddingTop: 6, paddingBottom: 6 }}>
             <Button
               as="a"
-              href={dashboardUrl(rowData.meta.documentId)}
+              href={workflowUrl(rowData.id)}
               target="_blank"
               rel="noopener noreferrer"
-              variant="default"
+              variant="emphasized"
             >
-              Dashboard
+              Automation
             </Button>
+          </div>
+          {rowData.meta.documentId && (
+            <div style={{ paddingTop: 6, paddingBottom: 6 }}>
+              <Button
+                as="a"
+                href={dashboardUrl(rowData.meta.documentId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="emphasized"
+                color="primary"
+              >
+                Dashboard
+              </Button>
+            </div>
           )}
         </Flex>
       ),
@@ -180,7 +208,7 @@ export const Deployments: React.FC = () => {
   ], []);
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 32px 64px" }}>
+    <div style={{ width: "80%", margin: "0 auto", padding: "32px 0 64px" }}>
       <TitleBar>
         <TitleBar.Title>My Deployments</TitleBar.Title>
         <TitleBar.Subtitle>
