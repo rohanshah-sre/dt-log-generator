@@ -3,7 +3,7 @@
   "environmentUrl": "https://example.apps.dynatracelabs.com/",
   "app": {
     "name": "LaunchLog",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "description": "LaunchLog — Business scenario log generator for Dynatrace demos.",
     "id": "my.launchlog",
     "icon": "assets/icon.png",
@@ -14,7 +14,8 @@
       { "name": "storage:logs:read", "comment": "read back ingested logs in DQL queries" },
       { "name": "environment-api:entities:read", "comment": "resolve host/service entities for log enrichment" },
       { "name": "document:documents:write", "comment": "create the log-gen dashboard" },
-      { "name": "document:documents:read", "comment": "read back created dashboards" }
+      { "name": "document:documents:read", "comment": "read back created dashboards" },
+      { "name": "document:documents:delete", "comment": "delete dashboards when removing a scenario" }
     ]
   }
 }

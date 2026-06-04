@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { Flex, Surface, TitleBar } from "@dynatrace/strato-components/layouts";
 import { Paragraph } from "@dynatrace/strato-components/typography";
 import { Button } from "@dynatrace/strato-components/buttons";
+import { Modal } from "@dynatrace/strato-components/overlays";
 import { DataTable, type DataTableColumnDef } from "@dynatrace/strato-components/tables";
-import { EmptyState, HealthIndicator } from "@dynatrace/strato-components/content";
+import { EmptyState, HealthIndicator, MessageContainer } from "@dynatrace/strato-components/content";
 import { showToast } from "@dynatrace/strato-components/notifications";
 
 import type { Workflow } from "@dynatrace-sdk/client-automation";
@@ -64,6 +65,8 @@ const fmtDate = (s?: string): string => {
 
 export const Deployments: React.FC = () => {
   const [rows, setRows] = useState<DeploymentRow[] | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [pendingDeleteRow, setPendingDeleteRow] = useState<DeploymentRow | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -115,6 +118,26 @@ export const Deployments: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const confirmDelete = useCallback(async () => {
+    const row = pendingDeleteRow;
+    if (!row) return;
+    setPendingDeleteRow(null);
+    setDeletingIds(prev => new Set(prev).add(row.id));
+    try {
+      if (row.meta.documentId) {
+        const docMeta = await documentsClient.getDocumentMetadata({ id: row.meta.documentId });
+        await documentsClient.deleteDocument({ id: row.meta.documentId, optimisticLockingVersion: docMeta.version });
+      }
+      showToast({ type: "success", title: "Dashboard deleted", message: `Dashboard for "${row.scenarioName}" has been removed. Please pause or delete the workflow manually.` });
+      await load();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast({ type: "critical", title: "Delete failed", message: msg });
+    } finally {
+      setDeletingIds(prev => { const s = new Set(prev); s.delete(row.id); return s; });
+    }
+  }, [pendingDeleteRow, load]);
 
   const columns = useMemo<DataTableColumnDef<DeploymentRow>[]>(() => [
     {
@@ -205,7 +228,26 @@ export const Deployments: React.FC = () => {
         </Flex>
       ),
     },
-  ], []);
+    {
+      id: "delete",
+      header: "Delete",
+      accessor: "id",
+      alignment: "center",
+      cell: ({ rowData }: { rowData: DeploymentRow; value: string }) => (
+        <div style={{ paddingTop: 20 }}>
+          <Button
+            variant="emphasized"
+            color="critical"
+            onClick={() => setPendingDeleteRow(rowData)}
+            loading={deletingIds.has(rowData.id)}
+            disabled={deletingIds.has(rowData.id)}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
+    },
+  ], [deletingIds, setPendingDeleteRow]);
 
   return (
     <div style={{ width: "80%", margin: "0 auto", padding: "32px 0 64px" }}>
@@ -254,6 +296,32 @@ export const Deployments: React.FC = () => {
           </DataTable>
         )}
       </div>
+      <Modal
+        title="Delete Scenario"
+        show={pendingDeleteRow !== null}
+        size="small"
+        onDismiss={() => setPendingDeleteRow(null)}
+        footer={
+          <Flex gap={8} justifyContent="flex-end">
+            <Button variant="default" onClick={() => setPendingDeleteRow(null)}>
+              Cancel
+            </Button>
+            <Button variant="emphasized" color="critical" onClick={() => void confirmDelete()}>
+              Delete
+            </Button>
+          </Flex>
+        }
+      >
+        <Paragraph style={{ paddingBottom: 20 }}>
+          Are you sure you want to delete the dashboard for <strong>{pendingDeleteRow?.scenarioName}</strong>?
+        </Paragraph>
+        <MessageContainer variant="warning">
+          <MessageContainer.Description>
+            This will delete the associated dashboard and remove the scenario from your deployments view.
+            You will still need to manually go to Automation to pause or delete the workflow.
+          </MessageContainer.Description>
+        </MessageContainer>
+      </Modal>
     </div>
   );
 };
