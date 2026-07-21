@@ -12,7 +12,10 @@ export type VerticalKey =
   | "pos"
   | "airlines"
   | "iot"
-  | "media";
+  | "media"
+  | "cash_valuables"
+  | "digital_retail"
+  | "atm_services";
 
 export type UseCaseKey = string;
 
@@ -877,6 +880,196 @@ export const VERTICALS: Vertical[] = [
           t("Ad Funnel", "funnel"),
           t("Revenue Over Time", "timeseries"),
           t("Top Advertisers", "bar"),
+        ],
+      },
+    ],
+  },
+
+  // ---------- Cash & Valuables Management ----------
+  {
+    key: "cash_valuables",
+    name: "Cash & Valuables Management",
+    description: "Armored transport, vault operations, and currency authentication.",
+    icon: "🏦",
+    useCases: [
+      {
+        key: "cash_in_transit",
+        name: "Cash-in-Transit",
+        description: "Armored vehicle dispatch, route execution, and secure cash delivery.",
+        services: ["dispatch-service", "route-optimizer", "vehicle-tracker", "manifest-service", "incident-mgmt", "customer-portal"],
+        businessValue: "Track on-time delivery rate and incident exposure across every armored route in real time.",
+        tiles: [
+          t("Shipments Dispatched", "kpi"),
+          t("On-Time Delivery Rate", "kpi"),
+          t("Value in Transit ($)", "kpi"),
+          t("Incidents Reported", "kpi"),
+          t("Active Vehicles", "kpi"),
+          t("Shipment Status Over Time", "timeseries"),
+          t("Delivery Success by Region", "bar"),
+          t("Incident Types", "bar"),
+          t("Vehicle Status Distribution", "donut"),
+          t("Recent Incidents", "table"),
+        ],
+      },
+      {
+        key: "vault_operations",
+        name: "Vault Operations",
+        description: "Cash deposits, withdrawals, reconciliation, and access management.",
+        services: ["vault-mgmt", "reconciliation-service", "access-control", "audit-service", "reporting-service"],
+        businessValue: "Surface variance events and reconciliation failures before they become audit findings.",
+        tiles: [
+          t("Vault Transactions", "kpi"),
+          t("Reconciliation Success Rate", "kpi"),
+          t("Variance Events", "kpi"),
+          t("Unauthorized Access Attempts", "kpi"),
+          t("Transaction Mix", "donut"),
+          t("Vault Activity Over Time", "timeseries"),
+          t("Variances by Vault", "bar"),
+          t("Access Events by Type", "bar"),
+        ],
+      },
+      {
+        key: "counterfeit_detection",
+        name: "Counterfeit Detection",
+        description: "Currency authentication, counterfeit flagging, and suspect batch handling.",
+        services: ["note-validator", "sensor-array", "alert-service", "evidence-mgmt", "reporting-service"],
+        businessValue: "Quantify counterfeit interception rate and false-positive cost across all processing centers.",
+        tiles: [
+          t("Notes Validated", "kpi"),
+          t("Counterfeit Detection Rate", "kpi"),
+          t("Counterfeits Intercepted", "kpi"),
+          t("False Positive Rate", "kpi"),
+          t("Detections by Denomination", "bar"),
+          t("Counterfeit Events Over Time", "timeseries"),
+          t("Detection Method Mix", "donut"),
+        ],
+      },
+    ],
+  },
+
+  // ---------- Digital Retail Solutions ----------
+  {
+    key: "digital_retail",
+    name: "Digital Retail Solutions",
+    description: "Payment terminal management, self-checkout, and digital loyalty.",
+    icon: "🖥️",
+    useCases: [
+      {
+        key: "terminal_management",
+        name: "Payment Terminal Management",
+        description: "Terminal fleet health, connectivity, and software compliance.",
+        services: ["terminal-mgmt", "fleet-monitor", "software-distributor", "connectivity-service", "alert-service", "reporting-service"],
+        businessValue: "Maximize terminal uptime — every offline lane directly impacts revenue per hour.",
+        tiles: [
+          t("Online Terminal Rate", "kpi"),
+          t("Offline Terminals", "kpi"),
+          t("Software Compliance Rate", "kpi"),
+          t("Avg Transaction Latency (ms)", "kpi"),
+          t("Active Store Locations", "kpi"),
+          t("Terminal Status Over Time", "timeseries"),
+          t("Terminals by Status", "bar"),
+          t("Software Version Distribution", "bar"),
+          t("Status Distribution", "donut"),
+          t("Terminals Requiring Attention", "table"),
+        ],
+      },
+      {
+        key: "self_checkout",
+        name: "Self-Checkout Operations",
+        description: "SCO session flows, interventions, and basket management.",
+        services: ["sco-controller", "weight-sensor", "payment-service", "age-verify-service", "intervention-service", "receipt-service"],
+        businessValue: "Track intervention rate and basket conversion — the two metrics that decide SCO ROI.",
+        tiles: [
+          t("SCO Sessions", "kpi"),
+          t("Completion Rate", "kpi"),
+          t("Intervention Rate", "kpi"),
+          t("Avg Basket Value ($)", "kpi"),
+          t("Payment Success Rate", "kpi"),
+          t("SCO Session Flow Funnel", "funnel"),
+          t("Session Volume Over Time", "timeseries"),
+          t("Intervention Reasons", "bar"),
+          t("Payment Method Mix", "donut"),
+        ],
+      },
+      {
+        key: "loyalty_receipts",
+        name: "Digital Receipts & Loyalty",
+        description: "Loyalty point accrual, redemption, and digital receipt delivery.",
+        services: ["loyalty-engine", "receipt-service", "notification-service", "member-portal", "offer-engine"],
+        businessValue: "Connect loyalty engagement to basket size and retention — the proof points for the program ROI.",
+        tiles: [
+          t("Loyalty Transactions", "kpi"),
+          t("Points Redeemed", "kpi"),
+          t("Digital Receipt Delivery Rate", "kpi"),
+          t("Redemption Failures", "kpi"),
+          t("Program Distribution", "donut"),
+          t("Loyalty Activity Over Time", "timeseries"),
+          t("Delivery Failures by Channel", "bar"),
+        ],
+      },
+    ],
+  },
+
+  // ---------- ATM Managed Services ----------
+  {
+    key: "atm_services",
+    name: "ATM Managed Services",
+    description: "ATM fleet health, cash replenishment, and transaction processing.",
+    icon: "🏧",
+    useCases: [
+      {
+        key: "atm_fleet_health",
+        name: "ATM Fleet Health",
+        description: "ATM uptime, fault management, and availability across the deployed fleet.",
+        services: ["atm-monitor", "fault-mgmt", "remote-mgmt", "alert-service", "field-dispatch", "reporting-service"],
+        businessValue: "Every offline ATM is lost transaction revenue and a customer service risk — visibility drives uptime.",
+        tiles: [
+          t("Fleet Availability Rate", "kpi"),
+          t("ATMs In Service", "kpi"),
+          t("ATMs Out of Service", "kpi"),
+          t("Low Cash Alerts", "kpi"),
+          t("Avg MTTR (min)", "kpi"),
+          t("ATM Status Over Time", "timeseries"),
+          t("Out-of-Service Reasons", "bar"),
+          t("Availability by Region", "bar"),
+          t("Status Distribution", "donut"),
+          t("Critical ATMs", "table"),
+        ],
+      },
+      {
+        key: "cash_replenishment",
+        name: "Cash Replenishment",
+        description: "ATM cash-fill operations, cassette management, and schedule adherence.",
+        services: ["replenishment-scheduler", "crew-dispatch", "cassette-mgmt", "vault-link", "audit-service"],
+        businessValue: "Optimize cash-fill scheduling to reduce out-of-cash events without over-provisioning float.",
+        tiles: [
+          t("Replenishments Completed", "kpi"),
+          t("On-Schedule Rate", "kpi"),
+          t("Cash-Out Events", "kpi"),
+          t("Total Cash Loaded ($)", "kpi"),
+          t("Replenishments Over Time", "timeseries"),
+          t("Fill Events by ATM Cluster", "bar"),
+          t("Failure Reasons", "bar"),
+          t("Cassette Type Mix", "donut"),
+        ],
+      },
+      {
+        key: "atm_transactions",
+        name: "ATM Transaction Processing",
+        description: "Cash withdrawals, deposits, balance inquiries, and fraud detection.",
+        services: ["txn-processor", "auth-service", "fraud-engine", "card-network-gateway", "receipt-printer", "audit-service"],
+        businessValue: "Track authorization success rate and fraud interception as core ATM operational KPIs.",
+        tiles: [
+          t("Transaction Success Rate", "kpi"),
+          t("Transactions Processed", "kpi"),
+          t("Fraud Alerts", "kpi"),
+          t("p95 Authorization Latency (ms)", "kpi"),
+          t("Card Network Distribution", "donut"),
+          t("Transaction Volume Over Time", "timeseries"),
+          t("Failure Reasons", "bar"),
+          t("Transactions by Type", "bar"),
+          t("Fraud Alerts by Alert Type", "bar"),
+          t("Recent Fraud Events", "table"),
         ],
       },
     ],

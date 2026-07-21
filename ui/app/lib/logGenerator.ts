@@ -205,6 +205,41 @@ export const GEO_POOLS: Record<VerticalKey, GeoEntry[]> = {
     { country: "Brazil", city: "Brasília", lat: -15.78, lon: -47.93, region: "LATAM" },
     { country: "Mexico", city: "Mexico City", lat: 19.43, lon: -99.13, region: "LATAM" },
   ],
+  cash_valuables: [
+    { country: "United States", city: "New York", lat: 40.71, lon: -74.01, region: "NA" },
+    { country: "United States", city: "Los Angeles", lat: 34.05, lon: -118.24, region: "NA" },
+    { country: "United States", city: "Chicago", lat: 41.88, lon: -87.63, region: "NA" },
+    { country: "United Kingdom", city: "London", lat: 51.51, lon: -0.13, region: "EU" },
+    { country: "Germany", city: "Frankfurt", lat: 50.11, lon: 8.68, region: "EU" },
+    { country: "France", city: "Paris", lat: 48.86, lon: 2.35, region: "EU" },
+    { country: "Australia", city: "Sydney", lat: -33.87, lon: 151.21, region: "APAC" },
+    { country: "Brazil", city: "São Paulo", lat: -23.55, lon: -46.63, region: "LATAM" },
+    { country: "Singapore", city: "Singapore", lat: 1.35, lon: 103.82, region: "APAC" },
+    { country: "South Africa", city: "Johannesburg", lat: -26.20, lon: 28.04, region: "MEA" },
+  ],
+  digital_retail: [
+    { country: "United States", city: "New York", lat: 40.71, lon: -74.01, region: "NA" },
+    { country: "United States", city: "Los Angeles", lat: 34.05, lon: -118.24, region: "NA" },
+    { country: "United Kingdom", city: "London", lat: 51.51, lon: -0.13, region: "EU" },
+    { country: "Germany", city: "Munich", lat: 48.14, lon: 11.58, region: "EU" },
+    { country: "France", city: "Paris", lat: 48.86, lon: 2.35, region: "EU" },
+    { country: "Australia", city: "Melbourne", lat: -37.81, lon: 144.96, region: "APAC" },
+    { country: "Japan", city: "Tokyo", lat: 35.68, lon: 139.69, region: "APAC" },
+    { country: "Canada", city: "Toronto", lat: 43.65, lon: -79.38, region: "NA" },
+    { country: "Brazil", city: "São Paulo", lat: -23.55, lon: -46.63, region: "LATAM" },
+  ],
+  atm_services: [
+    { country: "United States", city: "New York", lat: 40.71, lon: -74.01, region: "NA" },
+    { country: "United States", city: "Chicago", lat: 41.88, lon: -87.63, region: "NA" },
+    { country: "United Kingdom", city: "London", lat: 51.51, lon: -0.13, region: "EU" },
+    { country: "Germany", city: "Frankfurt", lat: 50.11, lon: 8.68, region: "EU" },
+    { country: "India", city: "Mumbai", lat: 19.08, lon: 72.88, region: "APAC" },
+    { country: "Brazil", city: "São Paulo", lat: -23.55, lon: -46.63, region: "LATAM" },
+    { country: "Mexico", city: "Mexico City", lat: 19.43, lon: -99.13, region: "LATAM" },
+    { country: "South Africa", city: "Johannesburg", lat: -26.20, lon: 28.04, region: "MEA" },
+    { country: "Australia", city: "Sydney", lat: -33.87, lon: 151.21, region: "APAC" },
+    { country: "Poland", city: "Warsaw", lat: 52.23, lon: 21.01, region: "EU" },
+  ],
 };
 
 // Realistic public IP ranges (avoiding RFC1918 private ranges)
@@ -1815,6 +1850,396 @@ const MEDIA_AD = {
   },
 };
 
+// ---- Cash & Valuables Management packs ----------------------------------
+
+const CVM_TRANSIT = {
+  ok(): Record<string, unknown> {
+    const shipId = `SHP-${randAlnum(10)}`;
+    const value = intBetween(10000, 2000000);
+    return {
+      "event.type": "SHIPMENT_DISPATCHED",
+      "shipment.id": shipId,
+      "vehicle.id": `VEH-${randAlnum(6)}`,
+      "route.id": `RTE-${randAlnum(6)}`,
+      "shipment.value": value,
+      "crew.size": intBetween(2, 4),
+      "customer.id": `CUST-${randDigits(5)}`,
+      region: pick(["NA", "EU", "APAC", "MEA", "LATAM"]),
+      latency_ms: intBetween(30, 500),
+      message: `Shipment ${shipId} dispatched — value $${value}`,
+    };
+  },
+  err(): Record<string, unknown> {
+    const shipId = `SHP-${randAlnum(10)}`;
+    const incidentType = pick(["ROBBERY_ATTEMPT", "VEHICLE_BREAKDOWN", "ACCIDENT", "ROUTE_DEVIATION", "COMMUNICATION_LOSS"]);
+    return {
+      "event.type": "TRANSIT_INCIDENT",
+      "shipment.id": shipId,
+      "vehicle.id": `VEH-${randAlnum(6)}`,
+      "incident.type": incidentType,
+      "value.at.risk": intBetween(10000, 1000000),
+      "emergency.response": pick(["LAW_ENFORCEMENT", "INTERNAL_RESPONSE", "RECOVERY_CREW"]),
+      message: `Incident on shipment ${shipId}: ${incidentType}`,
+    };
+  },
+  warn(): Record<string, unknown> {
+    const shipId = `SHP-${randAlnum(10)}`;
+    const reason = pick(["TRAFFIC", "WEATHER", "ROUTE_CHANGE", "MECHANICAL_CHECK", "FUEL_STOP"]);
+    return {
+      "event.type": "SHIPMENT_DELAYED",
+      "shipment.id": shipId,
+      "vehicle.id": `VEH-${randAlnum(6)}`,
+      "delay.minutes": intBetween(5, 120),
+      "delay.reason": reason,
+      message: `Shipment ${shipId} delayed — reason: ${reason}`,
+    };
+  },
+};
+
+const CVM_VAULT = {
+  ok(): Record<string, unknown> {
+    const txnType = pick(["DEPOSIT", "WITHDRAWAL", "TRANSFER", "AUDIT"]);
+    const amount = intBetween(1000, 5000000);
+    return {
+      "event.type": "VAULT_TRANSACTION",
+      "vault.id": `VLT-${randAlnum(6)}`,
+      "transaction.type": txnType,
+      "transaction.amount": amount,
+      "operator.id": `OPR-${randDigits(5)}`,
+      "reconciliation.status": "BALANCED",
+      latency_ms: intBetween(200, 2000),
+      message: `Vault ${txnType} — $${amount}`,
+    };
+  },
+  err(): Record<string, unknown> {
+    const amount = intBetween(100, 50000);
+    return {
+      "event.type": "VARIANCE_DETECTED",
+      "vault.id": `VLT-${randAlnum(6)}`,
+      "variance.amount": amount,
+      "variance.direction": pick(["OVER", "SHORT"]),
+      "reconciliation.status": "FAILED",
+      "escalated.to": pick(["SUPERVISOR", "AUDIT_TEAM", "MANAGEMENT"]),
+      message: `Vault variance detected — ${amount} USD discrepancy`,
+    };
+  },
+  warn(): Record<string, unknown> {
+    const alertType = pick(["UNUSUAL_ACCESS_TIME", "REPEATED_FAIL_AUTH", "DUAL_CONTROL_VIOLATION", "OVERRIDE_USED"]);
+    return {
+      "event.type": "ACCESS_ANOMALY",
+      "vault.id": `VLT-${randAlnum(6)}`,
+      "alert.type": alertType,
+      "operator.id": `OPR-${randDigits(5)}`,
+      message: `Vault access anomaly: ${alertType}`,
+    };
+  },
+};
+
+const CVM_COUNTERFEIT = {
+  ok(): Record<string, unknown> {
+    const denom = pick([1, 5, 10, 20, 50, 100, 200]);
+    const count = intBetween(10, 5000);
+    return {
+      "event.type": "NOTE_VALIDATED",
+      "sensor.id": `SNS-${randAlnum(6)}`,
+      denomination: denom,
+      "note.count": count,
+      result: "AUTHENTIC",
+      "detection.method": pick(["UV_SCAN", "MAGNETIC_INK", "INFRARED", "WATERMARK", "MICRO_PRINT"]),
+      latency_ms: intBetween(5, 50),
+      message: `${count} × $${denom} notes validated — AUTHENTIC`,
+    };
+  },
+  err(): Record<string, unknown> {
+    const denom = pick([20, 50, 100, 200]);
+    const count = intBetween(1, 20);
+    return {
+      "event.type": "COUNTERFEIT_DETECTED",
+      "sensor.id": `SNS-${randAlnum(6)}`,
+      denomination: denom,
+      "note.count": count,
+      result: "COUNTERFEIT",
+      "detection.method": pick(["UV_SCAN", "MAGNETIC_INK", "INFRARED", "WATERMARK"]),
+      "forger.indicator": pick(["INKJET_PRINT", "LASER_PRINT", "PHOTOCOPY", "DIGITAL_ALTERATION"]),
+      message: `${count} × $${denom} counterfeit notes intercepted`,
+    };
+  },
+  warn(): Record<string, unknown> {
+    const denom = pick([20, 50, 100]);
+    const count = intBetween(5, 50);
+    const score = +numBetween(0.55, 0.79);
+    return {
+      "event.type": "SUSPICIOUS_BATCH",
+      "sensor.id": `SNS-${randAlnum(6)}`,
+      denomination: denom,
+      "note.count": count,
+      "confidence.score": score,
+      result: "SUSPECT",
+      message: `Suspicious batch: ${count} × $${denom} — confidence ${score}`,
+    };
+  },
+};
+
+// ---- Digital Retail Solutions packs -------------------------------------
+
+const DR_TERMINAL = {
+  ok(): Record<string, unknown> {
+    const status = pick(["ONLINE", "ONLINE", "ONLINE", "IDLE"]);
+    return {
+      "event.type": "TERMINAL_HEARTBEAT",
+      "terminal.id": `TRM-${randAlnum(8)}`,
+      "store.id": `STR-${randDigits(5)}`,
+      "terminal.status": status,
+      "transactions.since.reset": intBetween(0, 500),
+      "software.version": `v${intBetween(8, 12)}.${intBetween(0, 9)}.${intBetween(0, 9)}`,
+      "connectivity": pick(["ETHERNET", "WIFI", "4G"]),
+      "uptime.hours": +numBetween(0.5, 720),
+      latency_ms: intBetween(10, 100),
+      message: `Terminal heartbeat — status: ${status}`,
+    };
+  },
+  err(): Record<string, unknown> {
+    const errorCode = pick(["NETWORK_TIMEOUT", "HARDWARE_FAULT", "SOFTWARE_CRASH", "POWER_FAILURE", "TAMPER_ALERT"]);
+    return {
+      "event.type": "TERMINAL_OFFLINE",
+      "terminal.id": `TRM-${randAlnum(8)}`,
+      "store.id": `STR-${randDigits(5)}`,
+      "terminal.status": "OFFLINE",
+      "error.code": errorCode,
+      "failure.type": pick(["HARDWARE", "SOFTWARE", "NETWORK", "POWER"]),
+      message: `Terminal offline — ${errorCode}`,
+    };
+  },
+  warn(): Record<string, unknown> {
+    const reason = pick(["HIGH_LATENCY", "PAPER_LOW", "BATTERY_LOW", "CONNECTIVITY_INTERMITTENT", "SOFTWARE_OUTDATED"]);
+    return {
+      "event.type": "TERMINAL_DEGRADED",
+      "terminal.id": `TRM-${randAlnum(8)}`,
+      "store.id": `STR-${randDigits(5)}`,
+      "terminal.status": "DEGRADED",
+      "degradation.reason": reason,
+      message: `Terminal degraded — ${reason}`,
+    };
+  },
+};
+
+const DR_SCO = {
+  ok(): Record<string, unknown> {
+    const amount = +numBetween(5, 300);
+    const items = intBetween(1, 30);
+    return {
+      "event.type": "SCO_TRANSACTION",
+      "session.id": uuidLike(),
+      "lane.id": `SCO-${randDigits(3)}`,
+      "store.id": `STR-${randDigits(5)}`,
+      amount,
+      "item.count": items,
+      "payment.method": pick(["CONTACTLESS", "CHIP", "CASH", "MOBILE_PAY"]),
+      "completion.time_ms": intBetween(30000, 300000),
+      "bagging.assists": intBetween(0, 2),
+      message: `SCO session completed — $${amount}, ${items} items`,
+    };
+  },
+  err(): Record<string, unknown> {
+    const reason = pick(["WEIGHT_DISCREPANCY", "RESTRICTED_ITEM", "PAYMENT_FAILED", "AGE_VERIFICATION_FAILED", "BARCODE_UNREADABLE"]);
+    return {
+      "event.type": "SCO_INTERVENTION_REQUIRED",
+      "session.id": uuidLike(),
+      "lane.id": `SCO-${randDigits(3)}`,
+      "store.id": `STR-${randDigits(5)}`,
+      "intervention.reason": reason,
+      "attendant.id": `ATT-${randDigits(4)}`,
+      message: `SCO intervention required — ${reason}`,
+    };
+  },
+  warn(): Record<string, unknown> {
+    return {
+      "event.type": "SCO_ITEM_NOT_FOUND",
+      "session.id": uuidLike(),
+      "lane.id": `SCO-${randDigits(3)}`,
+      "store.id": `STR-${randDigits(5)}`,
+      "barcode": randDigits(13),
+      "manual.lookup.required": true,
+      message: "SCO item not found — manual price lookup needed",
+    };
+  },
+};
+
+const DR_LOYALTY = {
+  ok(): Record<string, unknown> {
+    const points = intBetween(10, 500);
+    return {
+      "event.type": "LOYALTY_TRANSACTION",
+      "member.id": `MBR-${randAlnum(10)}`,
+      "transaction.id": `TXN-${randAlnum(12)}`,
+      "points.earned": points,
+      "program": pick(["GOLD", "SILVER", "STANDARD", "PREMIUM"]),
+      "tier": pick(["BRONZE", "SILVER", "GOLD", "PLATINUM"]),
+      "point.balance": intBetween(100, 100000),
+      "receipt.channel": pick(["EMAIL", "SMS", "APP", "PRINT"]),
+      "receipt.delivered": true,
+      message: `Loyalty transaction — ${points} points earned`,
+    };
+  },
+  err(): Record<string, unknown> {
+    const reason = pick(["EXPIRED_VOUCHER", "INSUFFICIENT_POINTS", "MEMBER_NOT_FOUND", "PROGRAM_INACTIVE", "API_TIMEOUT"]);
+    return {
+      "event.type": "LOYALTY_REDEMPTION_FAILED",
+      "member.id": `MBR-${randAlnum(10)}`,
+      "voucher.id": `VCH-${randAlnum(8)}`,
+      "failure.reason": reason,
+      message: `Loyalty redemption failed — ${reason}`,
+    };
+  },
+  warn(): Record<string, unknown> {
+    const channel = pick(["EMAIL", "SMS", "APP"]);
+    return {
+      "event.type": "RECEIPT_DELIVERY_DELAYED",
+      "member.id": `MBR-${randAlnum(10)}`,
+      "transaction.id": `TXN-${randAlnum(12)}`,
+      "delivery.channel": channel,
+      "delay.ms": intBetween(5000, 60000),
+      message: `Receipt delivery delayed — channel: ${channel}`,
+    };
+  },
+};
+
+// ---- ATM Managed Services packs -----------------------------------------
+
+const ATM_FLEET = {
+  ok(): Record<string, unknown> {
+    const atmId = `ATM-${randAlnum(8)}`;
+    const cashPct = intBetween(30, 100);
+    return {
+      "event.type": "ATM_HEARTBEAT",
+      "atm.id": atmId,
+      "location": pick(["BRANCH", "RETAIL", "AIRPORT", "MALL", "STREET", "PETROL_STATION"]),
+      "cash.level.pct": cashPct,
+      "atm.status": "IN_SERVICE",
+      "uptime.hours": +numBetween(1, 720),
+      "transactions.today": intBetween(10, 500),
+      region: pick(["NA", "EU", "APAC", "MEA", "LATAM"]),
+      latency_ms: intBetween(10, 200),
+      message: `ATM ${atmId} heartbeat — cash: ${cashPct}%`,
+    };
+  },
+  err(): Record<string, unknown> {
+    const atmId = `ATM-${randAlnum(8)}`;
+    const reason = pick(["HARDWARE_FAULT", "NETWORK_FAILURE", "CASH_JAM", "CARD_READER_FAIL", "POWER_OUTAGE", "VANDALISM"]);
+    return {
+      "event.type": "ATM_OUT_OF_SERVICE",
+      "atm.id": atmId,
+      "location": pick(["BRANCH", "RETAIL", "AIRPORT", "MALL", "STREET"]),
+      "atm.status": "OUT_OF_SERVICE",
+      "error.code": pick(["HW-001", "HW-002", "NET-001", "CASH-001", "CR-001"]),
+      "failure.reason": reason,
+      region: pick(["NA", "EU", "APAC", "MEA", "LATAM"]),
+      message: `ATM ${atmId} out of service — ${reason}`,
+    };
+  },
+  warn(): Record<string, unknown> {
+    const atmId = `ATM-${randAlnum(8)}`;
+    const cashPct = intBetween(5, 20);
+    const hoursLeft = +numBetween(0.5, 6);
+    return {
+      "event.type": "LOW_CASH_ALERT",
+      "atm.id": atmId,
+      "location": pick(["BRANCH", "RETAIL", "AIRPORT", "MALL", "STREET"]),
+      "cash.level.pct": cashPct,
+      "hours.until.empty": hoursLeft,
+      "atm.status": "LOW_CASH",
+      region: pick(["NA", "EU", "APAC", "MEA", "LATAM"]),
+      message: `ATM ${atmId} low cash — ${cashPct}%, ~${hoursLeft}h until empty`,
+    };
+  },
+};
+
+const ATM_REPLENISHMENT = {
+  ok(): Record<string, unknown> {
+    const atmId = `ATM-${randAlnum(8)}`;
+    const amount = intBetween(5000, 200000);
+    return {
+      "event.type": "REPLENISHMENT_COMPLETED",
+      "atm.id": atmId,
+      "cassette.type": pick(["USD_20", "USD_50", "USD_100", "EUR_20", "EUR_50"]),
+      "amount.loaded": amount,
+      "crew.id": `CREW-${randDigits(5)}`,
+      "duration.minutes": intBetween(5, 30),
+      "cash.level.after.pct": intBetween(80, 100),
+      message: `ATM ${atmId} replenishment completed — $${amount} loaded`,
+    };
+  },
+  err(): Record<string, unknown> {
+    const atmId = `ATM-${randAlnum(8)}`;
+    const reason = pick(["CASSETTE_JAM", "DENOMINATION_MISMATCH", "SECURITY_ALERT", "NETWORK_FAIL", "VARIANCE_DETECTED"]);
+    return {
+      "event.type": "REPLENISHMENT_FAILED",
+      "atm.id": atmId,
+      "cassette.type": pick(["USD_20", "USD_50", "USD_100"]),
+      "failure.reason": reason,
+      "variance.amount": chance(0.5) ? intBetween(50, 5000) : 0,
+      message: `ATM ${atmId} replenishment failed — ${reason}`,
+    };
+  },
+  warn(): Record<string, unknown> {
+    const atmId = `ATM-${randAlnum(8)}`;
+    const delayMin = intBetween(10, 120);
+    return {
+      "event.type": "REPLENISHMENT_DELAYED",
+      "atm.id": atmId,
+      "delay.minutes": delayMin,
+      "delay.reason": pick(["TRAFFIC", "CREW_UNAVAILABLE", "VEHICLE_ISSUE", "SECURITY_HOLD"]),
+      message: `ATM ${atmId} replenishment delayed by ${delayMin} min`,
+    };
+  },
+};
+
+const ATM_TRANSACTION = {
+  ok(): Record<string, unknown> {
+    const txnId = `ATMTXN-${randAlnum(12)}`;
+    const txnType = pick(["CASH_WITHDRAWAL", "BALANCE_INQUIRY", "DEPOSIT", "TRANSFER", "PIN_CHANGE"]);
+    const amount = txnType === "CASH_WITHDRAWAL" ? intBetween(20, 1000) : 0;
+    return {
+      "event.type": "ATM_TRANSACTION_COMPLETED",
+      "transaction.id": txnId,
+      "transaction.type": txnType,
+      "transaction.amount": amount,
+      "atm.id": `ATM-${randAlnum(8)}`,
+      "card.network": pick(["VISA", "MASTERCARD", "AMEX", "INTERAC", "MAESTRO"]),
+      "card.type": pick(["DEBIT", "CREDIT", "PREPAID"]),
+      "auth.latency_ms": intBetween(800, 5000),
+      latency_ms: intBetween(800, 5000),
+      message: `${txnType} completed — txn ${txnId}`,
+    };
+  },
+  err(): Record<string, unknown> {
+    const txnId = `ATMTXN-${randAlnum(12)}`;
+    const txnType = pick(["CASH_WITHDRAWAL", "BALANCE_INQUIRY", "DEPOSIT", "TRANSFER"]);
+    const reason = pick(["INSUFFICIENT_FUNDS", "CARD_BLOCKED", "HOST_TIMEOUT", "NETWORK_FAILURE", "PIN_INCORRECT", "CARD_EXPIRED"]);
+    return {
+      "event.type": "ATM_TRANSACTION_FAILED",
+      "transaction.id": txnId,
+      "transaction.type": txnType,
+      "failure.reason": reason,
+      "atm.id": `ATM-${randAlnum(8)}`,
+      "card.network": pick(["VISA", "MASTERCARD", "AMEX", "INTERAC", "MAESTRO"]),
+      "error.code": pick(["E001", "E002", "E003", "E004", "E005"]),
+      message: `ATM transaction failed — ${reason}`,
+    };
+  },
+  warn(): Record<string, unknown> {
+    const alertType = pick(["SKIMMING_DETECTED", "CARD_CLONING_ATTEMPT", "SUSPICIOUS_SEQUENCE", "HIGH_VELOCITY", "GEO_MISMATCH"]);
+    return {
+      "event.type": "ATM_FRAUD_ALERT",
+      "atm.id": `ATM-${randAlnum(8)}`,
+      "alert.type": alertType,
+      "fraud.score": +numBetween(0.7, 0.99),
+      "action.taken": pick(["BLOCK_CARD", "FLAG_REVIEW", "NOTIFY_BANK", "ALERT_SECURITY"]),
+      message: `ATM fraud alert: ${alertType}`,
+    };
+  },
+};
+
 // ===== PACKS registry =====================================================
 
 type Pack = {
@@ -1866,6 +2291,15 @@ const PACKS: Record<string, Pack> = {
   "media/video_delivery": MEDIA_PLAYBACK,
   "media/live_streaming": MEDIA_LIVE,
   "media/ad_insertion": MEDIA_AD,
+  "cash_valuables/cash_in_transit": CVM_TRANSIT,
+  "cash_valuables/vault_operations": CVM_VAULT,
+  "cash_valuables/counterfeit_detection": CVM_COUNTERFEIT,
+  "digital_retail/terminal_management": DR_TERMINAL,
+  "digital_retail/self_checkout": DR_SCO,
+  "digital_retail/loyalty_receipts": DR_LOYALTY,
+  "atm_services/atm_fleet_health": ATM_FLEET,
+  "atm_services/cash_replenishment": ATM_REPLENISHMENT,
+  "atm_services/atm_transactions": ATM_TRANSACTION,
 };
 
 // INFO-level event.type variants (mirrors workflowBuilder.ts) so the preview
@@ -1910,9 +2344,18 @@ const INFO_TYPE_VARIANTS: Record<string, string[]> = {
   "iot/device_fleet":           ["HEARTBEAT","TELEMETRY","CONFIG_SYNC","UPDATE_CHECK","REGISTRATION"],
   "iot/sensor_telemetry":       ["SENSOR_READING","SAMPLE","CALIBRATION","BASELINE","HEARTBEAT"],
   "iot/firmware":               ["INSTALL_SUCCESS","DOWNLOAD_STARTED","VERIFY_OK","REBOOT","CAMPAIGN_TARGETED"],
-  "media/video_delivery":       ["PLAYBACK_START","PLAYBACK_END","QUALITY_SWITCH","SEEK","HEARTBEAT"],
-  "media/live_streaming":       ["LIVE_STREAM","SEGMENT_DELIVERED","ENCODER_OK","CDN_HIT","HEALTH_CHECK"],
-  "media/ad_insertion":         ["AD_REQUEST","AD_IMPRESSION","AD_COMPLETE","AD_CLICK","BEACON"],
+  "media/video_delivery":                  ["PLAYBACK_START","PLAYBACK_END","QUALITY_SWITCH","SEEK","HEARTBEAT"],
+  "media/live_streaming":                  ["LIVE_STREAM","SEGMENT_DELIVERED","ENCODER_OK","CDN_HIT","HEALTH_CHECK"],
+  "media/ad_insertion":                    ["AD_REQUEST","AD_IMPRESSION","AD_COMPLETE","AD_CLICK","BEACON"],
+  "cash_valuables/cash_in_transit":        ["SHIPMENT_DISPATCHED","VEHICLE_DEPARTED","CHECKPOINT_CLEARED","DELIVERY_CONFIRMED","MANIFEST_SIGNED"],
+  "cash_valuables/vault_operations":       ["VAULT_DEPOSIT","VAULT_WITHDRAWAL","VAULT_AUDIT","RECONCILIATION_OK","ACCESS_GRANTED"],
+  "cash_valuables/counterfeit_detection":  ["NOTE_VALIDATED","BATCH_ACCEPTED","SENSOR_CALIBRATED","OPERATOR_VERIFIED","SHIFT_STARTED"],
+  "digital_retail/terminal_management":    ["TERMINAL_HEARTBEAT","TERMINAL_ONLINE","CONFIG_PUSHED","SOFTWARE_UPDATED","SELF_TEST_PASSED"],
+  "digital_retail/self_checkout":          ["SCO_TRANSACTION","ITEM_SCANNED","PAYMENT_PROCESSED","RECEIPT_PRINTED","SESSION_STARTED"],
+  "digital_retail/loyalty_receipts":       ["LOYALTY_TRANSACTION","POINTS_ACCRUED","RECEIPT_SENT","OFFER_REDEEMED","MEMBER_VERIFIED"],
+  "atm_services/atm_fleet_health":         ["ATM_HEARTBEAT","ATM_ONLINE","SELF_TEST_PASSED","CONFIG_SYNC","PERIODIC_CHECK"],
+  "atm_services/cash_replenishment":       ["REPLENISHMENT_COMPLETED","CASSETTE_LOADED","CREW_ARRIVED","AUDIT_COMPLETED","CASH_COUNTED"],
+  "atm_services/atm_transactions":         ["ATM_TRANSACTION_COMPLETED","CARD_READ","PIN_VALIDATED","DISPENSER_OK","RECEIPT_ISSUED"],
 };
 
 export const generateLogLine = (cfg: GeneratorConfig, ts: Date): Record<string, unknown> => {
