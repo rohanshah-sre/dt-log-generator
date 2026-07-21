@@ -46,6 +46,9 @@ const PALETTE: Record<string, [string, string, string, string, string]> = {
   airlines: ["#1E88E5", "#FFC107", "#E53935", "#43A047", "#9C27B0"],
   iot: ["#3F51B5", "#C0CA33", "#FF5722", "#00BCD4", "#FB8C00"],
   media: ["#FF5722", "#1976D2", "#2EB04C", "#FFC107", "#9C27B0"],
+  cash_valuables: ["#8B6914", "#2E7D32", "#C62828", "#1565C0", "#6A1B9A"],
+  digital_retail: ["#0288D1", "#E65100", "#558B2F", "#AD1457", "#37474F"],
+  atm_services: ["#00695C", "#283593", "#BF360C", "#F9A825", "#4A148C"],
 };
 const paletteFor = (vertical: string): readonly string[] =>
   PALETTE[vertical] ?? PALETTE.financial;
@@ -741,6 +744,75 @@ function getKPIs(base: string, ucKey: string): TileDef[] {
         { title: "Total Ad Revenue ($)", dql: `${base} | filter isNotNull(revenue.cpm) | summarize total = sum(revenue.cpm)` },
       ];
 
+    // ── Cash & Valuables Management ────────────────────────────────────────
+    case "cash_valuables/cash_in_transit":
+      return [
+        { title: "Shipments Dispatched", dql: `${base} | filter event.type == "SHIPMENT_DISPATCHED" | summarize count = count()` },
+        { title: "On-Time Delivery Rate (%)", dql: `${base} | summarize total = countIf(event.type == "SHIPMENT_DISPATCHED"), delayed = countIf(event.type == "SHIPMENT_DELAYED") | fieldsAdd rate = (total - delayed) / total * 100` },
+        { title: "Transit Incidents", dql: `${base} | filter event.type == "TRANSIT_INCIDENT" | summarize count = count()` },
+        { title: "Total Value in Transit ($)", dql: `${base} | filter isNotNull(shipment.value) | summarize total = sum(shipment.value)` },
+      ];
+    case "cash_valuables/vault_operations":
+      return [
+        { title: "Vault Transactions", dql: `${base} | filter event.type == "VAULT_TRANSACTION" | summarize count = count()` },
+        { title: "Variance Events", dql: `${base} | filter event.type == "VARIANCE_DETECTED" | summarize count = count()` },
+        { title: "Access Anomalies", dql: `${base} | filter event.type == "ACCESS_ANOMALY" | summarize count = count()` },
+        { title: "Reconciliation Success Rate (%)", dql: `${base} | summarize total = count(), ok = countIf(reconciliation.status == "BALANCED") | fieldsAdd rate = ok / total * 100` },
+      ];
+    case "cash_valuables/counterfeit_detection":
+      return [
+        { title: "Notes Validated", dql: `${base} | filter isNotNull(note.count) | summarize total = sum(note.count)` },
+        { title: "Counterfeits Intercepted", dql: `${base} | filter event.type == "COUNTERFEIT_DETECTED" | summarize count = count()` },
+        { title: "Suspicious Batches", dql: `${base} | filter event.type == "SUSPICIOUS_BATCH" | summarize count = count()` },
+        { title: "Detection Rate (%)", dql: `${base} | summarize total = count(), detected = countIf(result == "COUNTERFEIT") | fieldsAdd rate = detected / total * 100` },
+      ];
+
+    // ── Digital Retail Solutions ───────────────────────────────────────────
+    case "digital_retail/terminal_management":
+      return [
+        { title: "Online Terminal Rate (%)", dql: `${base} | summarize total = count(), online = countIf(terminal.status == "ONLINE") | fieldsAdd rate = online / total * 100` },
+        { title: "Offline Terminals", dql: `${base} | filter event.type == "TERMINAL_OFFLINE" | summarize count = countDistinctExact(terminal.id)` },
+        { title: "Degraded Terminals", dql: `${base} | filter terminal.status == "DEGRADED" | summarize count = countDistinctExact(terminal.id)` },
+        { title: "Avg Terminal Latency (ms)", dql: `${base} | filter isNotNull(latency_ms) | summarize avg = avg(latency_ms)` },
+      ];
+    case "digital_retail/self_checkout":
+      return [
+        { title: "SCO Sessions", dql: `${base} | filter event.type == "SCO_TRANSACTION" | summarize count = count()` },
+        { title: "Completion Rate (%)", dql: `${base} | summarize total = count(), completed = countIf(event.type == "SCO_TRANSACTION") | fieldsAdd rate = completed / total * 100` },
+        { title: "Intervention Rate (%)", dql: `${base} | summarize total = count(), interventions = countIf(event.type == "SCO_INTERVENTION_REQUIRED") | fieldsAdd rate = interventions / total * 100` },
+        { title: "Avg Basket Value ($)", dql: `${base} | filter isNotNull(amount) | summarize avg = avg(amount)` },
+      ];
+    case "digital_retail/loyalty_receipts":
+      return [
+        { title: "Loyalty Transactions", dql: `${base} | filter event.type == "LOYALTY_TRANSACTION" | summarize count = count()` },
+        { title: "Redemption Failures", dql: `${base} | filter event.type == "LOYALTY_REDEMPTION_FAILED" | summarize count = count()` },
+        { title: "Receipt Delivery Delays", dql: `${base} | filter event.type == "RECEIPT_DELIVERY_DELAYED" | summarize count = count()` },
+        { title: "Total Points Earned", dql: `${base} | filter isNotNull(points.earned) | summarize total = sum(points.earned)` },
+      ];
+
+    // ── ATM Managed Services ───────────────────────────────────────────────
+    case "atm_services/atm_fleet_health":
+      return [
+        { title: "Fleet Availability Rate (%)", dql: `${base} | summarize total = count(), inservice = countIf(atm.status == "IN_SERVICE") | fieldsAdd rate = inservice / total * 100` },
+        { title: "ATMs Out of Service", dql: `${base} | filter event.type == "ATM_OUT_OF_SERVICE" | summarize count = countDistinctExact(atm.id)` },
+        { title: "Low Cash Alerts", dql: `${base} | filter event.type == "LOW_CASH_ALERT" | summarize count = count()` },
+        { title: "Active ATMs", dql: `${base} | filter atm.status == "IN_SERVICE" | summarize count = countDistinctExact(atm.id)` },
+      ];
+    case "atm_services/cash_replenishment":
+      return [
+        { title: "Replenishments Completed", dql: `${base} | filter event.type == "REPLENISHMENT_COMPLETED" | summarize count = count()` },
+        { title: "Replenishment Failures", dql: `${base} | filter event.type == "REPLENISHMENT_FAILED" | summarize count = count()` },
+        { title: "On-Schedule Rate (%)", dql: `${base} | summarize total = count(), ok = countIf(event.type == "REPLENISHMENT_COMPLETED") | fieldsAdd rate = ok / total * 100` },
+        { title: "Total Cash Loaded ($)", dql: `${base} | filter isNotNull(amount.loaded) | summarize total = sum(amount.loaded)` },
+      ];
+    case "atm_services/atm_transactions":
+      return [
+        { title: "Transaction Success Rate (%)", dql: `${base} | summarize total = count(), ok = countIf(event.type == "ATM_TRANSACTION_COMPLETED") | fieldsAdd rate = ok / total * 100` },
+        { title: "Transactions Processed", dql: `${base} | filter event.type == "ATM_TRANSACTION_COMPLETED" | summarize count = count()` },
+        { title: "Fraud Alerts", dql: `${base} | filter event.type == "ATM_FRAUD_ALERT" | summarize count = count()` },
+        { title: "p95 Auth Latency (ms)", dql: `${base} | filter isNotNull(auth.latency_ms) | summarize p95 = percentile(auth.latency_ms, 95)` },
+      ];
+
     // ── Default ────────────────────────────────────────────────────────────
     default:
       return [
@@ -1074,6 +1146,75 @@ function getCharts(base: string, ucKey: string): TileDef[] {
         { title: "Ad Error Reasons", dql: `${base} | filter event.subtype == "AD_ERROR" | summarize count = count(), by:{error.type} | sort count desc`, viz: "categoricalBarChart" },
         { title: "Fill Rate Over Time", dql: `${base} | filter isNotNull(fill.rate) | makeTimeseries avg_fill = avg(fill.rate)`, viz: "areaChart" },
         { title: "Ad Type Distribution", dql: `${base} | summarize count = count(), by:{ad.type}`, viz: "pieChart" },
+      ];
+
+    // ── Cash & Valuables Management ────────────────────────────────────────
+    case "cash_valuables/cash_in_transit":
+      return [
+        { title: "Shipment Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Incidents by Type", dql: `${base} | filter event.type == "TRANSIT_INCIDENT" | summarize count = count(), by:{incident.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Shipments by Region", dql: `${base} | filter event.type == "SHIPMENT_DISPATCHED" | summarize count = count(), by:{region} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
+      ];
+    case "cash_valuables/vault_operations":
+      return [
+        { title: "Vault Activity Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Transaction Types", dql: `${base} | filter event.type == "VAULT_TRANSACTION" | summarize count = count(), by:{transaction.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Access Anomaly Types", dql: `${base} | filter event.type == "ACCESS_ANOMALY" | summarize count = count(), by:{alert.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Transaction Type Distribution", dql: `${base} | filter isNotNull(transaction.type) | summarize count = count(), by:{transaction.type}`, viz: "pieChart" },
+      ];
+    case "cash_valuables/counterfeit_detection":
+      return [
+        { title: "Detection Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{result}`, viz: "lineChart" },
+        { title: "Detections by Denomination", dql: `${base} | filter event.type == "COUNTERFEIT_DETECTED" | summarize count = count(), by:{denomination} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Detection Methods", dql: `${base} | filter isNotNull(detection.method) | summarize count = count(), by:{detection.method} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Result Distribution", dql: `${base} | filter isNotNull(result) | summarize count = count(), by:{result}`, viz: "pieChart" },
+      ];
+
+    // ── Digital Retail Solutions ───────────────────────────────────────────
+    case "digital_retail/terminal_management":
+      return [
+        { title: "Terminal Status Over Time", dql: `${base} | makeTimeseries count = count(), by:{terminal.status}`, viz: "lineChart" },
+        { title: "Offline Reasons", dql: `${base} | filter event.type == "TERMINAL_OFFLINE" | summarize count = count(), by:{error.code} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Connectivity Mix", dql: `${base} | filter isNotNull(connectivity) | summarize count = count(), by:{connectivity} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Status Distribution", dql: `${base} | filter isNotNull(terminal.status) | summarize count = count(), by:{terminal.status}`, viz: "pieChart" },
+      ];
+    case "digital_retail/self_checkout":
+      return [
+        { title: "SCO Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Intervention Reasons", dql: `${base} | filter event.type == "SCO_INTERVENTION_REQUIRED" | summarize count = count(), by:{intervention.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Payment Method Mix", dql: `${base} | filter isNotNull(payment.method) | summarize count = count(), by:{payment.method} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Event Type Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
+      ];
+    case "digital_retail/loyalty_receipts":
+      return [
+        { title: "Loyalty Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Delivery Failures by Channel", dql: `${base} | filter event.type == "RECEIPT_DELIVERY_DELAYED" | summarize count = count(), by:{delivery.channel} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Redemption Failure Reasons", dql: `${base} | filter event.type == "LOYALTY_REDEMPTION_FAILED" | summarize count = count(), by:{failure.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Member Tier Distribution", dql: `${base} | filter isNotNull(tier) | summarize count = count(), by:{tier}`, viz: "pieChart" },
+      ];
+
+    // ── ATM Managed Services ───────────────────────────────────────────────
+    case "atm_services/atm_fleet_health":
+      return [
+        { title: "ATM Status Over Time", dql: `${base} | makeTimeseries count = count(), by:{atm.status}`, viz: "lineChart" },
+        { title: "Out-of-Service Reasons", dql: `${base} | filter event.type == "ATM_OUT_OF_SERVICE" | summarize count = count(), by:{failure.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "ATMs by Region", dql: `${base} | summarize count = count(), by:{region} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "ATM Status Distribution", dql: `${base} | filter isNotNull(atm.status) | summarize count = count(), by:{atm.status}`, viz: "pieChart" },
+      ];
+    case "atm_services/cash_replenishment":
+      return [
+        { title: "Replenishment Events Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Failure Reasons", dql: `${base} | filter event.type == "REPLENISHMENT_FAILED" | summarize count = count(), by:{failure.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Cassette Type Mix", dql: `${base} | filter isNotNull(cassette.type) | summarize count = count(), by:{cassette.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Replenishment Outcome Distribution", dql: `${base} | summarize count = count(), by:{event.type}`, viz: "pieChart" },
+      ];
+    case "atm_services/atm_transactions":
+      return [
+        { title: "Transaction Volume Over Time", dql: `${base} | makeTimeseries count = count(), by:{event.type}`, viz: "lineChart" },
+        { title: "Failure Reasons", dql: `${base} | filter event.type == "ATM_TRANSACTION_FAILED" | summarize count = count(), by:{failure.reason} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Fraud Alert Types", dql: `${base} | filter event.type == "ATM_FRAUD_ALERT" | summarize count = count(), by:{alert.type} | sort count desc`, viz: "categoricalBarChart" },
+        { title: "Card Network Distribution", dql: `${base} | filter isNotNull(card.network) | summarize count = count(), by:{card.network}`, viz: "pieChart" },
       ];
 
     // ── Default ────────────────────────────────────────────────────────────

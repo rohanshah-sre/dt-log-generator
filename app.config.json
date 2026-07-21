@@ -1,9 +1,9 @@
 {
   "$schema": "./.dt-app/app.config.schema.json",
-  "environmentUrl": "https://example.apps.dynatracelabs.com/",
+  "environmentUrl": "https://tne33161.sprint.apps.dynatracelabs.com",
   "app": {
     "name": "LaunchLog",
-    "version": "1.0.4",
+    "version": "0.1.4",
     "description": "LaunchLog — Business scenario log generator for Dynatrace demos.",
     "id": "my.launchlog",
     "icon": "assets/icon.png",

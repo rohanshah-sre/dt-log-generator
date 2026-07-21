@@ -125,10 +125,19 @@ const INFO_TYPE_VARIANTS = {
   "iot/device_fleet":           ["HEARTBEAT","TELEMETRY","CONFIG_SYNC","UPDATE_CHECK","REGISTRATION"],
   "iot/sensor_telemetry":       ["SENSOR_READING","SAMPLE","CALIBRATION","BASELINE","HEARTBEAT"],
   "iot/firmware":               ["INSTALL_SUCCESS","DOWNLOAD_STARTED","VERIFY_OK","REBOOT","CAMPAIGN_TARGETED"],
-  "media/video_delivery":       ["PLAYBACK_START","PLAYBACK_END","QUALITY_SWITCH","SEEK","HEARTBEAT"],
-  "media/live_streaming":       ["LIVE_STREAM","SEGMENT_DELIVERED","ENCODER_OK","CDN_HIT","HEALTH_CHECK"],
-  "media/ad_insertion":         ["AD_REQUEST","AD_IMPRESSION","AD_COMPLETE","AD_CLICK","BEACON"],
-  "__default__":                ["EVENT","HEARTBEAT","SAMPLE","ACTION","CHECK"],
+  "media/video_delivery":                  ["PLAYBACK_START","PLAYBACK_END","QUALITY_SWITCH","SEEK","HEARTBEAT"],
+  "media/live_streaming":                  ["LIVE_STREAM","SEGMENT_DELIVERED","ENCODER_OK","CDN_HIT","HEALTH_CHECK"],
+  "media/ad_insertion":                    ["AD_REQUEST","AD_IMPRESSION","AD_COMPLETE","AD_CLICK","BEACON"],
+  "cash_valuables/cash_in_transit":        ["SHIPMENT_DISPATCHED","VEHICLE_DEPARTED","CHECKPOINT_CLEARED","DELIVERY_CONFIRMED","MANIFEST_SIGNED"],
+  "cash_valuables/vault_operations":       ["VAULT_DEPOSIT","VAULT_WITHDRAWAL","VAULT_AUDIT","RECONCILIATION_OK","ACCESS_GRANTED"],
+  "cash_valuables/counterfeit_detection":  ["NOTE_VALIDATED","BATCH_ACCEPTED","SENSOR_CALIBRATED","OPERATOR_VERIFIED","SHIFT_STARTED"],
+  "digital_retail/terminal_management":    ["TERMINAL_HEARTBEAT","TERMINAL_ONLINE","CONFIG_PUSHED","SOFTWARE_UPDATED","SELF_TEST_PASSED"],
+  "digital_retail/self_checkout":          ["SCO_TRANSACTION","ITEM_SCANNED","PAYMENT_PROCESSED","RECEIPT_PRINTED","SESSION_STARTED"],
+  "digital_retail/loyalty_receipts":       ["LOYALTY_TRANSACTION","POINTS_ACCRUED","RECEIPT_SENT","OFFER_REDEEMED","MEMBER_VERIFIED"],
+  "atm_services/atm_fleet_health":         ["ATM_HEARTBEAT","ATM_ONLINE","SELF_TEST_PASSED","CONFIG_SYNC","PERIODIC_CHECK"],
+  "atm_services/cash_replenishment":       ["REPLENISHMENT_COMPLETED","CASSETTE_LOADED","CREW_ARRIVED","AUDIT_COMPLETED","CASH_COUNTED"],
+  "atm_services/atm_transactions":         ["ATM_TRANSACTION_COMPLETED","CARD_READ","PIN_VALIDATED","DISPENSER_OK","RECEIPT_ISSUED"],
+  "__default__":                           ["EVENT","HEARTBEAT","SAMPLE","ACTION","CHECK"],
 };
 
 // ---- geo / IP enrichment ----
@@ -454,6 +463,83 @@ const buildPackBundle = (): string => `(() => {
     err(){return {"event.type":"GENERIC_ERROR",message:"Generic error event"};},
     warn(){return {"event.type":"GENERIC_WARN",message:"Generic warning event"};} };
 
+  // ---- Cash & Valuables Management ----
+  const CVM_TRANSIT = {
+    ok(){ const id="SHP-"+randAlnum(10); const val=intBetween(10000,2000000);
+      return {"event.type":"SHIPMENT_DISPATCHED","shipment.id":id,"vehicle.id":"VEH-"+randAlnum(6),"route.id":"RTE-"+randAlnum(6),"shipment.value":val,"crew.size":intBetween(2,4),"customer.id":"CUST-"+randDigits(5),region:pick(["NA","EU","APAC","MEA","LATAM"]),latency_ms:intBetween(30,500),message:"Shipment "+id+" dispatched — value $"+val}; },
+    err(){ const id="SHP-"+randAlnum(10); const inc=pick(["ROBBERY_ATTEMPT","VEHICLE_BREAKDOWN","ACCIDENT","ROUTE_DEVIATION","COMMUNICATION_LOSS"]);
+      return {"event.type":"TRANSIT_INCIDENT","shipment.id":id,"vehicle.id":"VEH-"+randAlnum(6),"incident.type":inc,"value.at.risk":intBetween(10000,1000000),"emergency.response":pick(["LAW_ENFORCEMENT","INTERNAL_RESPONSE","RECOVERY_CREW"]),message:"Incident on shipment "+id+": "+inc}; },
+    warn(){ const id="SHP-"+randAlnum(10); const reason=pick(["TRAFFIC","WEATHER","ROUTE_CHANGE","MECHANICAL_CHECK","FUEL_STOP"]);
+      return {"event.type":"SHIPMENT_DELAYED","shipment.id":id,"vehicle.id":"VEH-"+randAlnum(6),"delay.minutes":intBetween(5,120),"delay.reason":reason,message:"Shipment "+id+" delayed — reason: "+reason}; },
+  };
+  const CVM_VAULT = {
+    ok(){ const t=pick(["DEPOSIT","WITHDRAWAL","TRANSFER","AUDIT"]); const amt=intBetween(1000,5000000);
+      return {"event.type":"VAULT_TRANSACTION","vault.id":"VLT-"+randAlnum(6),"transaction.type":t,"transaction.amount":amt,"operator.id":"OPR-"+randDigits(5),"reconciliation.status":"BALANCED",latency_ms:intBetween(200,2000),message:"Vault "+t+" — $"+amt}; },
+    err(){ const amt=intBetween(100,50000);
+      return {"event.type":"VARIANCE_DETECTED","vault.id":"VLT-"+randAlnum(6),"variance.amount":amt,"variance.direction":pick(["OVER","SHORT"]),"reconciliation.status":"FAILED","escalated.to":pick(["SUPERVISOR","AUDIT_TEAM","MANAGEMENT"]),message:"Vault variance detected — "+amt+" USD discrepancy"}; },
+    warn(){ const a=pick(["UNUSUAL_ACCESS_TIME","REPEATED_FAIL_AUTH","DUAL_CONTROL_VIOLATION","OVERRIDE_USED"]);
+      return {"event.type":"ACCESS_ANOMALY","vault.id":"VLT-"+randAlnum(6),"alert.type":a,"operator.id":"OPR-"+randDigits(5),message:"Vault access anomaly: "+a}; },
+  };
+  const CVM_COUNTERFEIT = {
+    ok(){ const d=pick([1,5,10,20,50,100,200]); const cnt=intBetween(10,5000);
+      return {"event.type":"NOTE_VALIDATED","sensor.id":"SNS-"+randAlnum(6),denomination:d,"note.count":cnt,result:"AUTHENTIC","detection.method":pick(["UV_SCAN","MAGNETIC_INK","INFRARED","WATERMARK","MICRO_PRINT"]),latency_ms:intBetween(5,50),message:cnt+" × $"+d+" notes validated — AUTHENTIC"}; },
+    err(){ const d=pick([20,50,100,200]); const cnt=intBetween(1,20);
+      return {"event.type":"COUNTERFEIT_DETECTED","sensor.id":"SNS-"+randAlnum(6),denomination:d,"note.count":cnt,result:"COUNTERFEIT","detection.method":pick(["UV_SCAN","MAGNETIC_INK","INFRARED","WATERMARK"]),"forger.indicator":pick(["INKJET_PRINT","LASER_PRINT","PHOTOCOPY","DIGITAL_ALTERATION"]),message:cnt+" × $"+d+" counterfeit notes intercepted"}; },
+    warn(){ const d=pick([20,50,100]); const cnt=intBetween(5,50); const score=+numBetween(0.55,0.79);
+      return {"event.type":"SUSPICIOUS_BATCH","sensor.id":"SNS-"+randAlnum(6),denomination:d,"note.count":cnt,"confidence.score":score,result:"SUSPECT",message:"Suspicious batch: "+cnt+" × $"+d+" — confidence "+score}; },
+  };
+
+  // ---- Digital Retail Solutions ----
+  const DR_TERMINAL = {
+    ok(){ const st=pick(["ONLINE","ONLINE","ONLINE","IDLE"]);
+      return {"event.type":"TERMINAL_HEARTBEAT","terminal.id":"TRM-"+randAlnum(8),"store.id":"STR-"+randDigits(5),"terminal.status":st,"transactions.since.reset":intBetween(0,500),"software.version":"v"+intBetween(8,12)+"."+intBetween(0,9)+"."+intBetween(0,9),connectivity:pick(["ETHERNET","WIFI","4G"]),"uptime.hours":+numBetween(0.5,720),latency_ms:intBetween(10,100),message:"Terminal heartbeat — status: "+st}; },
+    err(){ const ec=pick(["NETWORK_TIMEOUT","HARDWARE_FAULT","SOFTWARE_CRASH","POWER_FAILURE","TAMPER_ALERT"]);
+      return {"event.type":"TERMINAL_OFFLINE","terminal.id":"TRM-"+randAlnum(8),"store.id":"STR-"+randDigits(5),"terminal.status":"OFFLINE","error.code":ec,"failure.type":pick(["HARDWARE","SOFTWARE","NETWORK","POWER"]),message:"Terminal offline — "+ec}; },
+    warn(){ const r=pick(["HIGH_LATENCY","PAPER_LOW","BATTERY_LOW","CONNECTIVITY_INTERMITTENT","SOFTWARE_OUTDATED"]);
+      return {"event.type":"TERMINAL_DEGRADED","terminal.id":"TRM-"+randAlnum(8),"store.id":"STR-"+randDigits(5),"terminal.status":"DEGRADED","degradation.reason":r,message:"Terminal degraded — "+r}; },
+  };
+  const DR_SCO = {
+    ok(){ const amt=+numBetween(5,300); const items=intBetween(1,30);
+      return {"event.type":"SCO_TRANSACTION","session.id":uuidLike(),"lane.id":"SCO-"+randDigits(3),"store.id":"STR-"+randDigits(5),amount:amt,"item.count":items,"payment.method":pick(["CONTACTLESS","CHIP","CASH","MOBILE_PAY"]),"completion.time_ms":intBetween(30000,300000),"bagging.assists":intBetween(0,2),message:"SCO session completed — $"+amt+", "+items+" items"}; },
+    err(){ const r=pick(["WEIGHT_DISCREPANCY","RESTRICTED_ITEM","PAYMENT_FAILED","AGE_VERIFICATION_FAILED","BARCODE_UNREADABLE"]);
+      return {"event.type":"SCO_INTERVENTION_REQUIRED","session.id":uuidLike(),"lane.id":"SCO-"+randDigits(3),"store.id":"STR-"+randDigits(5),"intervention.reason":r,"attendant.id":"ATT-"+randDigits(4),message:"SCO intervention required — "+r}; },
+    warn(){ return {"event.type":"SCO_ITEM_NOT_FOUND","session.id":uuidLike(),"lane.id":"SCO-"+randDigits(3),"store.id":"STR-"+randDigits(5),"barcode":randDigits(13),"manual.lookup.required":true,message:"SCO item not found — manual price lookup needed"}; },
+  };
+  const DR_LOYALTY = {
+    ok(){ const pts=intBetween(10,500);
+      return {"event.type":"LOYALTY_TRANSACTION","member.id":"MBR-"+randAlnum(10),"transaction.id":"TXN-"+randAlnum(12),"points.earned":pts,program:pick(["GOLD","SILVER","STANDARD","PREMIUM"]),tier:pick(["BRONZE","SILVER","GOLD","PLATINUM"]),"point.balance":intBetween(100,100000),"receipt.channel":pick(["EMAIL","SMS","APP","PRINT"]),"receipt.delivered":true,message:"Loyalty transaction — "+pts+" points earned"}; },
+    err(){ const r=pick(["EXPIRED_VOUCHER","INSUFFICIENT_POINTS","MEMBER_NOT_FOUND","PROGRAM_INACTIVE","API_TIMEOUT"]);
+      return {"event.type":"LOYALTY_REDEMPTION_FAILED","member.id":"MBR-"+randAlnum(10),"voucher.id":"VCH-"+randAlnum(8),"failure.reason":r,message:"Loyalty redemption failed — "+r}; },
+    warn(){ const ch=pick(["EMAIL","SMS","APP"]);
+      return {"event.type":"RECEIPT_DELIVERY_DELAYED","member.id":"MBR-"+randAlnum(10),"transaction.id":"TXN-"+randAlnum(12),"delivery.channel":ch,"delay.ms":intBetween(5000,60000),message:"Receipt delivery delayed — channel: "+ch}; },
+  };
+
+  // ---- ATM Managed Services ----
+  const ATM_FLEET = {
+    ok(){ const id="ATM-"+randAlnum(8); const cp=intBetween(30,100);
+      return {"event.type":"ATM_HEARTBEAT","atm.id":id,location:pick(["BRANCH","RETAIL","AIRPORT","MALL","STREET","PETROL_STATION"]),"cash.level.pct":cp,"atm.status":"IN_SERVICE","uptime.hours":+numBetween(1,720),"transactions.today":intBetween(10,500),region:pick(["NA","EU","APAC","MEA","LATAM"]),latency_ms:intBetween(10,200),message:"ATM "+id+" heartbeat — cash: "+cp+"%"}; },
+    err(){ const id="ATM-"+randAlnum(8); const r=pick(["HARDWARE_FAULT","NETWORK_FAILURE","CASH_JAM","CARD_READER_FAIL","POWER_OUTAGE","VANDALISM"]);
+      return {"event.type":"ATM_OUT_OF_SERVICE","atm.id":id,location:pick(["BRANCH","RETAIL","AIRPORT","MALL","STREET"]),"atm.status":"OUT_OF_SERVICE","error.code":pick(["HW-001","HW-002","NET-001","CASH-001","CR-001"]),"failure.reason":r,region:pick(["NA","EU","APAC","MEA","LATAM"]),message:"ATM "+id+" out of service — "+r}; },
+    warn(){ const id="ATM-"+randAlnum(8); const cp=intBetween(5,20); const h=+numBetween(0.5,6);
+      return {"event.type":"LOW_CASH_ALERT","atm.id":id,location:pick(["BRANCH","RETAIL","AIRPORT","MALL","STREET"]),"cash.level.pct":cp,"hours.until.empty":h,"atm.status":"LOW_CASH",region:pick(["NA","EU","APAC","MEA","LATAM"]),message:"ATM "+id+" low cash — "+cp+"%, ~"+h+"h until empty"}; },
+  };
+  const ATM_REPLENISHMENT = {
+    ok(){ const id="ATM-"+randAlnum(8); const amt=intBetween(5000,200000);
+      return {"event.type":"REPLENISHMENT_COMPLETED","atm.id":id,"cassette.type":pick(["USD_20","USD_50","USD_100","EUR_20","EUR_50"]),"amount.loaded":amt,"crew.id":"CREW-"+randDigits(5),"duration.minutes":intBetween(5,30),"cash.level.after.pct":intBetween(80,100),message:"ATM "+id+" replenishment completed — $"+amt+" loaded"}; },
+    err(){ const id="ATM-"+randAlnum(8); const r=pick(["CASSETTE_JAM","DENOMINATION_MISMATCH","SECURITY_ALERT","NETWORK_FAIL","VARIANCE_DETECTED"]);
+      return {"event.type":"REPLENISHMENT_FAILED","atm.id":id,"cassette.type":pick(["USD_20","USD_50","USD_100"]),"failure.reason":r,"variance.amount":chance(0.5)?intBetween(50,5000):0,message:"ATM "+id+" replenishment failed — "+r}; },
+    warn(){ const id="ATM-"+randAlnum(8); const dm=intBetween(10,120);
+      return {"event.type":"REPLENISHMENT_DELAYED","atm.id":id,"delay.minutes":dm,"delay.reason":pick(["TRAFFIC","CREW_UNAVAILABLE","VEHICLE_ISSUE","SECURITY_HOLD"]),message:"ATM "+id+" replenishment delayed by "+dm+" min"}; },
+  };
+  const ATM_TRANSACTION = {
+    ok(){ const id="ATMTXN-"+randAlnum(12); const t=pick(["CASH_WITHDRAWAL","BALANCE_INQUIRY","DEPOSIT","TRANSFER","PIN_CHANGE"]); const amt=t==="CASH_WITHDRAWAL"?intBetween(20,1000):0;
+      return {"event.type":"ATM_TRANSACTION_COMPLETED","transaction.id":id,"transaction.type":t,"transaction.amount":amt,"atm.id":"ATM-"+randAlnum(8),"card.network":pick(["VISA","MASTERCARD","AMEX","INTERAC","MAESTRO"]),"card.type":pick(["DEBIT","CREDIT","PREPAID"]),"auth.latency_ms":intBetween(800,5000),latency_ms:intBetween(800,5000),message:t+" completed — txn "+id}; },
+    err(){ const id="ATMTXN-"+randAlnum(12); const t=pick(["CASH_WITHDRAWAL","BALANCE_INQUIRY","DEPOSIT","TRANSFER"]); const r=pick(["INSUFFICIENT_FUNDS","CARD_BLOCKED","HOST_TIMEOUT","NETWORK_FAILURE","PIN_INCORRECT","CARD_EXPIRED"]);
+      return {"event.type":"ATM_TRANSACTION_FAILED","transaction.id":id,"transaction.type":t,"failure.reason":r,"atm.id":"ATM-"+randAlnum(8),"card.network":pick(["VISA","MASTERCARD","AMEX","INTERAC","MAESTRO"]),"error.code":pick(["E001","E002","E003","E004","E005"]),message:"ATM transaction failed — "+r}; },
+    warn(){ const a=pick(["SKIMMING_DETECTED","CARD_CLONING_ATTEMPT","SUSPICIOUS_SEQUENCE","HIGH_VELOCITY","GEO_MISMATCH"]);
+      return {"event.type":"ATM_FRAUD_ALERT","atm.id":"ATM-"+randAlnum(8),"alert.type":a,"fraud.score":+numBetween(0.7,0.99),"action.taken":pick(["BLOCK_CARD","FLAG_REVIEW","NOTIFY_BANK","ALERT_SECURITY"]),message:"ATM fraud alert: "+a}; },
+  };
+
   // ===== new verticals =====
   const VIN_CHARS = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789";
   const randVin = () => Array.from({length:17},()=>VIN_CHARS[Math.floor(r()*VIN_CHARS.length)]).join("");
@@ -645,6 +731,9 @@ const buildPackBundle = (): string => `(() => {
     "airlines/flight_ops":AIRLINES_FLIGHT,"airlines/passenger":AIRLINES_PAX,"airlines/ground_ops":AIRLINES_GROUND,
     "iot/device_fleet":IOT_FLEET,"iot/sensor_telemetry":IOT_SENSOR,"iot/firmware":IOT_FIRMWARE,
     "media/video_delivery":MEDIA_PLAYBACK,"media/live_streaming":MEDIA_LIVE,"media/ad_insertion":MEDIA_AD,
+    "cash_valuables/cash_in_transit":CVM_TRANSIT,"cash_valuables/vault_operations":CVM_VAULT,"cash_valuables/counterfeit_detection":CVM_COUNTERFEIT,
+    "digital_retail/terminal_management":DR_TERMINAL,"digital_retail/self_checkout":DR_SCO,"digital_retail/loyalty_receipts":DR_LOYALTY,
+    "atm_services/atm_fleet_health":ATM_FLEET,"atm_services/cash_replenishment":ATM_REPLENISHMENT,"atm_services/atm_transactions":ATM_TRANSACTION,
     "__default__":GENERIC,
   };
 })()`;
