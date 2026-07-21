@@ -40,6 +40,9 @@ The demo story: *"Here's what Dynatrace surfaces from your logs the moment you c
 | Airlines | Flight Operations, Passenger Services, Ground Ops |
 | IoT & Industrial | Device Fleet, Sensor Telemetry, Firmware |
 | Media & Streaming | Video Delivery, Live Streaming, Ad Insertion |
+| Cash & Valuables Management | Cash-in-Transit, Vault Operations, Counterfeit Detection |
+| Digital Retail Solutions | Payment Terminal Management, Self-Checkout, Digital Receipts & Loyalty |
+| ATM Managed Services | ATM Fleet Health, Cash Replenishment, ATM Transaction Processing |
 
 ---
 
@@ -91,6 +94,15 @@ Every scenario emits structured logs with a consistent base schema plus vertical
 | Gaming — Sessions | `player.id`, `player.level`, `player.region`, `game.mode`, `match.result`, `anti_cheat.flag` |
 | Energy — Smart Grid | `node.id`, `node.type`, `load.mw`, `voltage.kv`, `frequency.hz`, `customers.affected` |
 | Logistics — Last Mile | `package.id`, `event.subtype`, `zone`, `carrier`, `sla.type`, `sla.met`, `failure.reason` |
+| Cash & Valuables — Cash-in-Transit | `shipment.id`, `vehicle.id`, `route.id`, `shipment.value`, `crew.size`, `incident.type` |
+| Cash & Valuables — Vault Operations | `vault.id`, `transaction.type`, `transaction.amount`, `reconciliation.status`, `variance.amount` |
+| Cash & Valuables — Counterfeit Detection | `sensor.id`, `denomination`, `note.count`, `result`, `detection.method`, `confidence.score` |
+| Digital Retail — Terminal Management | `terminal.id`, `store.id`, `terminal.status`, `software.version`, `connectivity`, `error.code` |
+| Digital Retail — Self-Checkout | `session.id`, `lane.id`, `store.id`, `amount`, `item.count`, `intervention.reason`, `payment.method` |
+| Digital Retail — Loyalty & Receipts | `member.id`, `points.earned`, `tier`, `program`, `receipt.channel`, `failure.reason` |
+| ATM Managed Services — Fleet Health | `atm.id`, `location`, `cash.level.pct`, `atm.status`, `failure.reason`, `hours.until.empty` |
+| ATM Managed Services — Cash Replenishment | `atm.id`, `cassette.type`, `amount.loaded`, `crew.id`, `duration.minutes`, `failure.reason` |
+| ATM Managed Services — Transactions | `transaction.id`, `transaction.type`, `transaction.amount`, `card.network`, `auth.latency_ms`, `alert.type` |
 
 **Filter by scenario in DQL:**
 ```dql
